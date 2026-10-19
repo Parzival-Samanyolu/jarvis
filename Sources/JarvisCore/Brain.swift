@@ -1,0 +1,227 @@
+import Foundation
+
+public protocol Transport {
+    func send(_ body: [String: Any], headers: [String: String]) async throws -> (status: Int, data: Data)
+}
+
+public struct URLSessionTransport: Transport {
+    public init() {}
+    public func send(_ body: [String: Any], headers: [String: String]) async throws -> (status: Int, data: Data) {
+        var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 120
+        req.setValue("application/json", forHTTPHeaderField: "content-type")
+        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (d, r) = try await URLSession.shared.data(for: req)
+        return ((r as? HTTPURLResponse)?.statusCode ?? 0, d)
+    }
+}
+
+public enum BrainError: Error, Equatable {
+    case noKey
+    case offline
+    case api(Int, String)
+}
+
+public final class Brain {
+    public var mode: Mode = .auto
+    public private(set) var lastModel: Model?
+    public let usage: UsageTracker
+    public let memory: Memory
+    public let conversation: Conversation
+    let transport: Transport
+    let runner: CommandRunner
+    let apiKey: () -> String?
+    var useFallbacks = true
+    public static let maxToolRounds = 8
+
+    public init(transport: Transport = URLSessionTransport(), runner: CommandRunner, usage: UsageTracker = UsageTracker(),
+                memory: Memory = Memory(), conversation: Conversation = Conversation(), apiKey: @escaping () -> String? = Keychain.apiKey) {
+        self.transport = transport; self.runner = runner; self.usage = usage; self.memory = memory
+        self.conversation = conversation; self.apiKey = apiKey
+    }
+
+    // MARK: Public API
+
+    /// One spoken exchange: the user's words in, Jarvis's reply out. Updates short-term context.
+    public func respond(to text: String) async throws -> String {
+        conversation.expireIfIdle()
+        runner.beginRequest()
+        let model = Router.model(for: text, mode: mode, capReached: usage.capReached())
+        let reply = try await run(messages: conversation.messages() + [["role": "user", "content": text]], model: model, deep: Router.deepThinking.contains(where: text.lowercased().contains))
+        conversation.add(user: text, assistant: reply)
+        return reply
+    }
+
+    /// A self-contained request (morning greeting): does not touch the conversation.
+    public func oneShot(_ prompt: String, model: Model = .haiku) async throws -> String {
+        runner.beginRequest()
+        return try await run(messages: [["role": "user", "content": prompt]], model: usage.capReached() ? .haiku : model, deep: false)
+    }
+
+    /// After a conversation, extract lasting facts with Haiku and append them to memory.
+    @discardableResult
+    public func learn() async -> [String] {
+        let transcript = conversation.transcript
+        guard !transcript.isEmpty else { return [] }
+        let known = memory.lines().map(Memory.fact(of:)).joined(separator: "\n")
+        let body: [String: Any] = [
+            "model": Model.haiku.rawValue, "max_tokens": 600,
+            "system": Prompts.memoryExtract,
+            "output_config": ["effort": "low"],
+            "messages": [["role": "user", "content": "Known facts:\n\(known.isEmpty ? "(none)" : known)\n\nConversation:\n\(transcript)"]],
+        ]
+        guard let resp = try? await call(body, model: .haiku) else { return [] }
+        return memory.append(Self.parseFacts(Self.text(of: resp.content)))
+    }
+
+    public static func parseFacts(_ s: String) -> [String] {
+        guard let a = s.firstIndex(of: "["), let b = s.lastIndex(of: "]"), a < b,
+              let arr = try? JSONSerialization.jsonObject(with: Data(s[a...b].utf8)) as? [Any] else { return [] }
+        return arr.compactMap { $0 as? String }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    // MARK: Tool loop
+
+    struct Response { var content: [[String: Any]]; var stopReason: String; var model: Model }
+
+    func run(messages initial: [[String: Any]], model: Model, deep: Bool) async throws -> String {
+        var msgs = initial
+        lastModel = model
+        for _ in 0..<Self.maxToolRounds {
+            let body = requestBody(model: model, messages: msgs, deep: deep)
+            let resp = try await call(body, model: model)
+            msgs.append(["role": "assistant", "content": resp.content])
+            switch resp.stopReason {
+            case "tool_use":
+                var results: [[String: Any]] = []
+                for b in resp.content where b["type"] as? String == "tool_use" {
+                    results.append(await execute(b))
+                }
+                msgs.append(["role": "user", "content": results])
+            case "pause_turn":
+                continue
+            case "refusal":
+                return "I'm afraid I can't help with that one, sir."
+            default:
+                let t = Self.text(of: resp.content)
+                return t.isEmpty ? "Very good, sir." : t
+            }
+        }
+        return "I seem to have got myself into a loop, sir. Shall we try that again?"
+    }
+
+    func requestBody(model: Model, messages: [[String: Any]], deep: Bool) -> [String: Any] {
+        var body: [String: Any] = [
+            "model": model.rawValue,
+            "max_tokens": 2048,
+            "system": Prompts.system(memory: memory.text()),
+            "messages": messages,
+            "tools": Self.tools(for: model),
+            "output_config": ["effort": model == .haiku ? "low" : (deep ? "high" : "medium")],
+        ]
+        if useFallbacks && model != .haiku { body["fallbacks"] = "default" }
+        return body
+    }
+
+    static func tools(for model: Model) -> [[String: Any]] {
+        let search: [String: Any] = [
+            "type": model == .haiku ? "web_search_20250305" : "web_search_20260209",
+            "name": "web_search", "max_uses": 3,
+            "user_location": ["type": "approximate", "city": "Konya", "country": "TR", "timezone": "Europe/Istanbul"],
+        ]
+        func schema(_ props: [String: Any], required: [String]) -> [String: Any] {
+            ["type": "object", "properties": props, "required": required, "additionalProperties": false]
+        }
+        return [
+            search,
+            ["name": "run_command",
+             "description": "Run a zsh command on the owner's Mac (cwd is the home folder) and return its output. Handles files, apps (open -a), and system settings or media via osascript.",
+             "input_schema": schema(["command": ["type": "string", "description": "The zsh command line"]], required: ["command"])],
+            ["name": "look_at_screen",
+             "description": "Take a screenshot of the owner's screen. Only use when the owner asks about what is on their screen.",
+             "input_schema": schema([:], required: [])],
+            ["name": "notes",
+             "description": "Save to or read from the 'Jarvis' folder in the Notes app.",
+             "input_schema": schema(["action": ["type": "string", "enum": ["save", "search", "last", "recent"]],
+                                     "text": ["type": "string", "description": "Note text for save, or search words for search"]], required: ["action"])],
+        ]
+    }
+
+    func execute(_ block: [String: Any]) async -> [String: Any] {
+        let id = block["id"] as? String ?? ""
+        let input = block["input"] as? [String: Any] ?? [:]
+        var content: Any
+        var isError = false
+        switch block["name"] as? String {
+        case "run_command":
+            guard let cmd = input["command"] as? String, !cmd.isEmpty else { content = "Missing command."; isError = true; break }
+            let r = await runner.run(cmd)
+            content = r.output; isError = r.exitCode != 0
+        case "look_at_screen":
+            if let b64 = await Screen.capture() {
+                content = [["type": "image", "source": ["type": "base64", "media_type": "image/png", "data": b64]],
+                           ["type": "text", "text": "Screenshot of the owner's screen."]]
+            } else { content = "Could not capture the screen. Screen Recording permission may be missing."; isError = true }
+        case "notes":
+            let text = (input["text"] as? String) ?? ""
+            switch input["action"] as? String {
+            case "save": content = text.isEmpty ? "Nothing to save." : Notes.save(text)
+            case "search": content = Notes.search(text)
+            case "recent": content = Notes.recent(5)
+            default: content = Notes.last()
+            }
+        default:
+            content = "Unknown tool."; isError = true
+        }
+        var r: [String: Any] = ["type": "tool_result", "tool_use_id": id, "content": content]
+        if isError { r["is_error"] = true }
+        return r
+    }
+
+    // MARK: HTTP
+
+    func call(_ body: [String: Any], model: Model) async throws -> Response {
+        guard let key = apiKey(), !key.isEmpty else { throw BrainError.noKey }
+        var body = body
+        for attempt in 0..<3 {
+            var headers = ["x-api-key": key]
+            if body["fallbacks"] != nil { headers["anthropic-beta"] = "server-side-fallback-2026-07-01" }
+            let status: Int, data: Data
+            do { (status, data) = try await transport.send(body, headers: headers) }
+            catch let e as URLError where Self.offlineCodes.contains(e.code) { throw BrainError.offline }
+            let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+            if status == 200 {
+                let used = (json["model"] as? String).flatMap(Self.model(named:)) ?? model
+                if let u = json["usage"] as? [String: Any] { usage.record(model: used, usage: u) }
+                return Response(content: json["content"] as? [[String: Any]] ?? [], stopReason: json["stop_reason"] as? String ?? "end_turn", model: used)
+            }
+            let msg = ((json["error"] as? [String: Any])?["message"] as? String) ?? String(decoding: data, as: UTF8.self)
+            if status == 400, body["fallbacks"] != nil, msg.lowercased().contains("fallback") {
+                body["fallbacks"] = nil; useFallbacks = false; continue   // beta shape rejected: carry on without it
+            }
+            if [429, 500, 502, 503, 529].contains(status), attempt < 2 {
+                try? await Task.sleep(nanoseconds: UInt64(1_500_000_000 * Double(attempt + 1))); continue
+            }
+            throw BrainError.api(status, msg)
+        }
+        throw BrainError.api(0, "retries exhausted")
+    }
+
+    static let offlineCodes: Set<URLError.Code> = [.notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed, .dataNotAllowed, .timedOut, .internationalRoamingOff]
+
+    static func model(named s: String) -> Model? {
+        if let m = Model(rawValue: s) { return m }
+        if s.contains("opus") { return .opus }
+        if s.contains("sonnet") { return .sonnet }
+        if s.contains("haiku") { return .haiku }
+        return nil
+    }
+
+    static func text(of content: [[String: Any]]) -> String {
+        content.filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
