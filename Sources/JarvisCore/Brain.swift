@@ -200,6 +200,7 @@ public final class Brain {
             }
             let msg = ((json["error"] as? [String: Any])?["message"] as? String) ?? String(decoding: data, as: UTF8.self)
             if status == 400, body["fallbacks"] != nil, msg.lowercased().contains("fallback") {
+                FileHandle.standardError.write(Data("jarvis: API rejected fallbacks (\(msg)); continuing without\n".utf8))
                 body["fallbacks"] = nil; useFallbacks = false; continue   // beta shape rejected: carry on without it
             }
             if [429, 500, 502, 503, 529].contains(status), attempt < 2 {

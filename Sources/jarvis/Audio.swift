@@ -2,7 +2,32 @@ import AVFoundation
 import Foundation
 import JarvisCore
 
-/// Records one utterance from the default mic: 16 kHz mono, ends on silence.
+/// Converts mic buffers to 16 kHz mono floats.
+final class Resampler {
+    let inFmt: AVAudioFormat
+    let outFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+    let conv: AVAudioConverter
+
+    init?(from fmt: AVAudioFormat) {
+        guard fmt.sampleRate > 0, let c = AVAudioConverter(from: fmt, to: outFmt) else { return nil }
+        inFmt = fmt; conv = c
+    }
+
+    func convert(_ buf: AVAudioPCMBuffer) -> [Float] {
+        let cap = AVAudioFrameCount(Double(buf.frameLength) * 16000 / inFmt.sampleRate) + 32
+        guard let out = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: cap) else { return [] }
+        var fed = false
+        var err: NSError?
+        conv.convert(to: out, error: &err) { _, status in
+            if fed { status.pointee = .noDataNow; return nil }
+            fed = true; status.pointee = .haveData; return buf
+        }
+        guard err == nil, let ch = out.floatChannelData?[0] else { return [] }
+        return Array(UnsafeBufferPointer(start: ch, count: Int(out.frameLength)))
+    }
+}
+
+/// Records one utterance from the default mic: 16 kHz mono, ends on silence (or after a fixed time).
 final class Recorder {
     private let engine = AVAudioEngine()
     private let lock = NSLock()
@@ -17,14 +42,12 @@ final class Recorder {
     }
 
     /// Returns a WAV file URL, or nil if nobody spoke before the timeout (or it was cancelled).
-    func record(startTimeout: TimeInterval) async -> URL? {
+    /// With `fixed` set, records exactly that many seconds and ignores silence.
+    func record(startTimeout: TimeInterval, fixed: TimeInterval? = nil) async -> URL? {
         resetCancel()
         return await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
             let input = engine.inputNode
-            let inFmt = input.outputFormat(forBus: 0)
-            guard inFmt.sampleRate > 0,
-                  let outFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
-                  let conv = AVAudioConverter(from: inFmt, to: outFmt) else { cont.resume(returning: nil); return }
+            guard let rs = Resampler(from: input.outputFormat(forBus: 0)) else { cont.resume(returning: nil); return }
 
             final class State {
                 var detector: EndpointDetector; var samples: [Float] = []; var frame: [Float] = []; var done = false
@@ -44,20 +67,15 @@ final class Recorder {
                 }
             }
 
-            input.installTap(onBus: 0, bufferSize: 2048, format: inFmt) { [weak self] buf, _ in
+            input.installTap(onBus: 0, bufferSize: 2048, format: rs.inFmt) { [weak self] buf, _ in
                 guard let self, !st.done else { return }
                 if self.cancelled { finish(hadSpeech: false); return }
-                let cap = AVAudioFrameCount(Double(buf.frameLength) * 16000 / inFmt.sampleRate) + 32
-                guard let out = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: cap) else { return }
-                var fed = false
-                var err: NSError?
-                conv.convert(to: out, error: &err) { _, status in
-                    if fed { status.pointee = .noDataNow; return nil }
-                    fed = true; status.pointee = .haveData; return buf
-                }
-                guard err == nil, let ch = out.floatChannelData?[0] else { return }
-                let chunk = UnsafeBufferPointer(start: ch, count: Int(out.frameLength))
+                let chunk = rs.convert(buf)
                 st.samples.append(contentsOf: chunk)
+                if let fixed {
+                    if Double(st.samples.count) >= fixed * 16000 { finish(hadSpeech: true) }
+                    return
+                }
                 st.frame.append(contentsOf: chunk)
                 while st.frame.count >= frameLen {
                     let rms = EndpointDetector.rms(st.frame[0..<frameLen])
@@ -67,6 +85,39 @@ final class Recorder {
             }
             do { engine.prepare(); try engine.start() } catch { input.removeTap(onBus: 0); cont.resume(returning: nil) }
         }
+    }
+}
+
+/// Always-on "Hey Jarvis" listener. Runs only while Jarvis is idle (see AppController.updateWake).
+final class WakeListener {
+    private let engine = AVAudioEngine()
+    private let queue = DispatchQueue(label: "jarvis.wake")
+    private let detector: WakeWordDetector
+    private(set) var running = false
+    var onWake: (() -> Void)?
+
+    init?() {
+        guard Models.wakeWordAvailable, let d = try? WakeWordDetector() else { return nil }
+        detector = d
+    }
+
+    func start() {
+        guard !running, let rs = Resampler(from: engine.inputNode.outputFormat(forBus: 0)) else { return }
+        queue.sync { detector.reset() }
+        engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: rs.inFmt) { [weak self] buf, _ in
+            let samples = rs.convert(buf)
+            self?.queue.async {
+                guard let self, self.running else { return }
+                if self.detector.feed(samples) { DispatchQueue.main.async { self.onWake?() } }
+            }
+        }
+        do { engine.prepare(); try engine.start(); running = true } catch { engine.inputNode.removeTap(onBus: 0) }
+    }
+
+    func stop() {
+        guard running else { return }
+        running = false
+        engine.inputNode.removeTap(onBus: 0); engine.stop()
     }
 }
 
