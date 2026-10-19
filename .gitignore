@@ -1,0 +1,12 @@
+.build/
+*.app
+.DS_Store
+# personal data
+memory.md
+usage.jsonl
+commands.log
+state.json
+voiceprint.*
+models/
+.env
+*.key
