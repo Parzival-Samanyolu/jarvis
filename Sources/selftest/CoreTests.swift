@@ -26,7 +26,7 @@ func textResp(_ t: String, model: String = "claude-haiku-5-5", usage: [String: A
 }
 
 func runCoreTests() {
-    runRouterTests(); runIntentTests(); runUsageTests(); runMemoryTests(); runBatteryTests()
+    runRouterTests(); runIntentTests(); runUsageTests(); runMemoryTests(); runBatteryTests(); runAudioTests()
     let sem = DispatchSemaphore(value: 0)
     Task { await runBrainTests(); sem.signal() }
     sem.wait()
@@ -191,4 +191,53 @@ func runBrainTests() async {
     expectEqual(learned, ["Owns a MacBook Air."])
     expect(mem.text().contains("MacBook"))
     expectEqual(t6.requests[1]["model"] as? String, "claude-haiku-5-5")
+}
+
+func runAudioTests() {
+    func drive(_ d: inout EndpointDetector, rms: Float, ms: Int) -> EndpointDetector.Event {
+        var e = EndpointDetector.Event.waiting
+        for _ in 0..<(ms / EndpointDetector.frameMs) { e = d.feed(rms: rms); if case .done = e { return e } }
+        return e
+    }
+    // silence only -> times out with no speech
+    var d = EndpointDetector(startTimeout: 3)
+    expectEqual(drive(&d, rms: 0.004, ms: 3500), .done(hadSpeech: false))
+    // quiet room, speech, then silence -> ends after ~0.9s of silence
+    d = EndpointDetector(startTimeout: 5)
+    expectEqual(drive(&d, rms: 0.004, ms: 500), .waiting)
+    expectEqual(drive(&d, rms: 0.08, ms: 1000), .speaking)
+    expectEqual(drive(&d, rms: 0.004, ms: 600), .speaking)
+    expectEqual(drive(&d, rms: 0.004, ms: 400), .done(hadSpeech: true))
+    // a short click is not speech
+    d = EndpointDetector(startTimeout: 2)
+    _ = drive(&d, rms: 0.004, ms: 400)
+    expectEqual(drive(&d, rms: 0.2, ms: 60), .waiting)
+    expectEqual(drive(&d, rms: 0.004, ms: 2000), .done(hadSpeech: false))
+    // pauses shorter than the end-silence do not cut the sentence
+    d = EndpointDetector(startTimeout: 5)
+    _ = drive(&d, rms: 0.004, ms: 400); _ = drive(&d, rms: 0.08, ms: 600)
+    expectEqual(drive(&d, rms: 0.004, ms: 500), .speaking)
+    expectEqual(drive(&d, rms: 0.08, ms: 400), .speaking)
+    // noisy room raises the threshold
+    d = EndpointDetector(startTimeout: 5)
+    _ = drive(&d, rms: 0.018, ms: 400)
+    expect(d.threshold > 0.05, "threshold \(d.threshold)")
+    // max duration
+    d = EndpointDetector(startTimeout: 5)
+    _ = drive(&d, rms: 0.004, ms: 400)
+    expectEqual(drive(&d, rms: 0.1, ms: 25000), .done(hadSpeech: true))
+
+    let wav = WAV.encode([0, 0.5, -0.5, 1.0])
+    expectEqual(wav.count, 44 + 8)
+    expectEqual(String(decoding: wav.prefix(4), as: UTF8.self), "RIFF")
+    expectEqual(String(decoding: wav[8..<12], as: UTF8.self), "WAVE")
+
+    expectEqual(Speech.clean("[BLANK_AUDIO]"), "")
+    expectEqual(Speech.clean(" (silence) "), "")
+    expectEqual(Speech.clean("Open Safari [click]"), "Open Safari")
+    expectEqual(Speech.clean("What time is it?"), "What time is it?")
+    expect(Speech.yesNo("Yes, go ahead") == .yes); expect(Speech.yesNo("No don't") == .no)
+    expect(Speech.yesNo("hmm what") == .unclear); expect(Speech.yesNo("Yeah sure") == .yes)
+    expect(Speech.keepOrDelete("delete that") == false); expect(Speech.keepOrDelete("keep") == true)
+    expect(Speech.keepOrDelete("what") == nil)
 }

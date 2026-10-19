@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import JarvisCore
 
@@ -41,7 +42,11 @@ if args.contains("--set-key") {
     print("Paste Anthropic API key: ", terminator: "")
     if let k = readLine(), !k.isEmpty { print(Keychain.setAPIKey(k.trimmingCharacters(in: .whitespaces)) ? "Stored in Keychain." : "Keychain write failed.") }
 } else if args.contains("--cli") {
-    await runCLI()
+    Task { await runCLI(); exit(0) }
+    dispatchMain()
 } else {
-    print("jarvis: use --cli for the terminal, or run the app bundle.")
+    let app = NSApplication.shared
+    let delegate = MainActor.assumeIsolated { AppController() }
+    app.delegate = delegate
+    app.run()
 }
