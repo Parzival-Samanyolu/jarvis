@@ -40,25 +40,36 @@ public enum Notes {
         let r = osascript(saveScript(text)); return r.ok ? "Saved." : "Error: \(r.out)"
     }
 
+    /// Record and field separators for `recent`, which note text will not contain.
+    static let rs = "\u{1E}", fs = "\u{1F}"
+
     /// Latest `n` notes, newest first, separated by blank lines.
+    /// Notes does not promise any order, so each note comes back with its age in seconds and is sorted here.
     public static func recent(_ n: Int) -> String {
         let r = osascript(ensureFolder + """
 
         tell application "Notes"
           set out to ""
-          set ns to notes of folder "Jarvis"
-          set c to count of ns
-          set i to 0
-          repeat with nt in ns
-            set i to i + 1
-            if i > \(n) then exit repeat
-            set out to out & (plaintext of nt) & "\\n---\\n"
+          set now to current date
+          repeat with nt in (notes of folder "Jarvis")
+            set out to out & ((now - (modification date of nt)) as integer) & (character id 31) & (plaintext of nt) & (character id 30)
           end repeat
           return out
         end tell
         """)
         if !r.ok { return "Error: \(r.out)" }
-        return r.out.isEmpty ? "No notes yet." : r.out
+        let text = newest(r.out, n)
+        return text.isEmpty ? "No notes yet." : text
+    }
+
+    /// Parses "age<US>text<RS>..." and joins the `n` youngest notes.
+    static func newest(_ raw: String, _ n: Int) -> String {
+        raw.components(separatedBy: rs).compactMap { rec -> (Int, String)? in
+            let parts = rec.components(separatedBy: fs)
+            guard parts.count >= 2, let age = Int(parts[0].trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+            return (age, parts.dropFirst().joined(separator: fs))
+        }
+        .sorted { $0.0 < $1.0 }.prefix(n).map { $0.1 + "\n---\n" }.joined()
     }
 
     public static func last() -> String { recent(1) }

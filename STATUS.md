@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-19. `swift run selftest --ml` passes (177 checks).
+Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 
 ## Built and verified here
 | Spec step | State |
@@ -12,20 +12,18 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (177 checks).
 | 9 Modes, usage log, $80 cap | Done and tested (Auto routing, cap, monthly reset). |
 | 4 Wake word | Done. openWakeWord pipeline in Swift via onnxruntime. Scores 0.99+ on synthetic "Hey Jarvis", about 0.00001 on other speech and silence. |
 | 5 Voiceprint | Done. Wespeaker ResNet34 + Swift fbank. Enrolled voice accepted, two other voices rejected (synthetic voices). |
-| 10 Notes, morning greeting | Written. AppleScript compiles but has never run. |
-| 11 Menu bar, mute, bundle, LaunchAgent | Written. App launches and stays up, with and without an enrolled voiceprint. |
+| 10 Notes, morning greeting | Written. Notes ordering unit-tested; live run waits on the Automation permission (see below). |
+| 11 Menu bar, mute, bundle, LaunchAgent | Done. App launches and stays up, with and without an enrolled voiceprint. LaunchAgent installed and running. App icon in `assets/` (redraw with `swift scripts/make-icon.swift`). |
 
 ## Not verified (needs a person at the Mac)
 1. **Microphone path.** `Recorder`, `WakeListener` and the VAD thresholds have never run on a real mic. Grant Microphone permission, then check the end-of-speech timing and wake-word sensitivity (`WakeWordDetector.threshold`, 0.5).
 2. **Voiceprint threshold** is 0.6, chosen from synthetic voices. Enroll with your real voice, watch `voice score` in Console (`log stream --process jarvis`), then edit `threshold` in `voiceprint.json`.
 3. **Permissions:** Microphone, Screen Recording (for `look_at_screen`), Automation (Notes), and Accessibility only if Mac-control commands need it. Ad-hoc signing means grants may reset after a rebuild.
-4. **Notes** (`Notes.swift`): first run creates the "Jarvis" folder. "Latest notes" assumes Notes returns newest first, which is not guaranteed.
+4. **Notes** (`Notes.swift`): first run creates the "Jarvis" folder. A test run timed out waiting for the Automation prompt ("allow control of Notes"); click Allow on first use. "Latest notes" now sorts by modification date.
 5. **Morning greeting** fires on `com.apple.screenIsUnlocked`. Not yet seen to fire after a real unlock.
 6. **"Stop" by voice while Jarvis speaks** relies on the voiceprint rejecting Jarvis's own voice through the speakers. Untested with real audio. The hotkey always works.
 7. **Wake word pre-roll:** recording starts after the wake word fires, so a request spoken in the same breath may lose its first syllable. Add a ring buffer if that happens.
-8. **Screen capture** (`screencapture -x` + resize) has not been run.
-9. **LaunchAgent** is written but not installed. Run `scripts/install-launchagent.sh`.
-10. **Private GitHub repo `jarvis`:** not created, nothing pushed. Needs `gh auth login` then `gh repo create jarvis --private --source . --push`.
+8. **Screen capture** (`screencapture -x` + resize) runs and resizes to 1568 px, but the image is black until Screen Recording is granted to Jarvis.
 
 ## Decisions and deviations
 - **Swift, not Python** (user request). Replacements: Carbon hotkey, energy VAD, whisper.cpp CLI, openWakeWord and Wespeaker on onnxruntime, `URLSession` for the API (no Swift SDK exists).
@@ -40,4 +38,5 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (177 checks).
 
 ## Known quirks
 - Haiku sometimes drags a stale remark from an earlier turn into a new answer.
+- Code is on GitHub (private): `Parzival-Samanyolu/jarvis`.
 - Debug builds are used for the bundle by default in testing. Use `scripts/bundle.sh` (release) for daily use.

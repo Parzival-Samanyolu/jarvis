@@ -26,10 +26,18 @@ func textResp(_ t: String, model: String = "claude-haiku-5-5", usage: [String: A
 }
 
 func runCoreTests() {
-    runRouterTests(); runIntentTests(); runUsageTests(); runMemoryTests(); runBatteryTests(); runAudioTests(); runBatteryPolicyTests()
+    runRouterTests(); runIntentTests(); runUsageTests(); runMemoryTests(); runBatteryTests(); runAudioTests(); runBatteryPolicyTests(); runNotesTests()
     let sem = DispatchSemaphore(value: 0)
     Task { await runBrainTests(); sem.signal() }
     sem.wait()
+}
+
+func runNotesTests() {
+    let (r, f) = (Notes.rs, Notes.fs)
+    let raw = "300\(f)old\(r)5\(f)newest\nline two\(r)60\(f)middle\(r)junk\(r)"
+    expectEqual(Notes.newest(raw, 2), "newest\nline two\n---\nmiddle\n---\n")
+    expectEqual(Notes.newest(raw, 9), "newest\nline two\n---\nmiddle\n---\nold\n---\n")
+    expectEqual(Notes.newest("", 5), "")
 }
 
 func runRouterTests() {
