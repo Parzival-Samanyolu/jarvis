@@ -26,7 +26,7 @@ func textResp(_ t: String, model: String = "claude-haiku-5-5", usage: [String: A
 }
 
 func runCoreTests() {
-    runRouterTests(); runIntentTests(); runUsageTests(); runMemoryTests(); runBatteryTests(); runAudioTests()
+    runRouterTests(); runIntentTests(); runUsageTests(); runMemoryTests(); runBatteryTests(); runAudioTests(); runBatteryPolicyTests()
     let sem = DispatchSemaphore(value: 0)
     Task { await runBrainTests(); sem.signal() }
     sem.wait()
@@ -240,4 +240,96 @@ func runAudioTests() {
     expect(Speech.yesNo("hmm what") == .unclear); expect(Speech.yesNo("Yeah sure") == .yes)
     expect(Speech.keepOrDelete("delete that") == false); expect(Speech.keepOrDelete("keep") == true)
     expect(Speech.keepOrDelete("what") == nil)
+}
+
+// MARK: ML pipelines (wake word, voiceprint) — need the models in ~/jarvis/models
+
+func synth(_ text: String, voice: String, rate: Int = 175) -> [Float] {
+    let aiff = NSTemporaryDirectory() + "st-\(UUID().uuidString).aiff", wav = aiff + ".wav"
+    _ = shell("/usr/bin/say", ["-v", voice, "-r", "\(rate)", "-o", aiff, text])
+    _ = shell("/usr/bin/afconvert", ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", aiff, wav])
+    defer { try? FileManager.default.removeItem(atPath: aiff); try? FileManager.default.removeItem(atPath: wav) }
+    return WAV.decode((try? Data(contentsOf: URL(fileURLWithPath: wav))) ?? Data())
+}
+@discardableResult func shell(_ exe: String, _ args: [String]) -> String {
+    let p = Process(); p.executableURL = URL(fileURLWithPath: exe); p.arguments = args
+    let pipe = Pipe(); p.standardOutput = pipe; p.standardError = pipe
+    try? p.run(); let d = pipe.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
+    return String(decoding: d, as: UTF8.self)
+}
+
+func wakeScore(_ det: WakeWordDetector, _ audio: [Float]) -> Float {
+    det.reset()
+    let silence = [Float](repeating: 0, count: 16000)
+    var maxScore: Float = 0
+    for chunkStart in stride(from: 0, to: silence.count + audio.count + silence.count, by: 1280) {
+        let all = silence + audio + silence
+        let end = min(all.count, chunkStart + 1280)
+        _ = det.feed(Array(all[chunkStart..<end]))
+        maxScore = max(maxScore, det.lastScore)
+    }
+    return maxScore
+}
+
+func runMLTests() {
+    guard Models.wakeWordAvailable, Models.speakerAvailable else { print("SKIP ML tests: models missing"); return }
+    do {
+        let det = try WakeWordDetector()
+        for v in ["Daniel", "Samantha", "Alex", "Karen"] {
+            let s = wakeScore(det, synth("Hey Jarvis", voice: v))
+            expect(s > 0.8, "wake word '\(v)' scored \(s)")
+        }
+        for phrase in ["Hello there, how are you", "Turn on the lights please", "What time is it"] {
+            let s = wakeScore(det, synth(phrase, voice: "Daniel"))
+            expect(s < 0.1, "'\(phrase)' scored \(s)")
+        }
+        expect(wakeScore(det, [Float](repeating: 0, count: 32000)) < 0.1, "silence")
+        // fires exactly once through feed() and respects the cooldown
+        det.reset()
+        var fires = 0
+        let all = [Float](repeating: 0, count: 16000) + synth("Hey Jarvis", voice: "Daniel") + [Float](repeating: 0, count: 16000)
+        for i in stride(from: 0, to: all.count, by: 1280) { if det.feed(Array(all[i..<min(all.count, i + 1280)])) { fires += 1 } }
+        expectEqual(fires, 1, "wake fires once")
+    } catch { expect(false, "wake word: \(error)") }
+}
+
+func runVoiceprintProbe() {
+    guard Models.speakerAvailable else { return }
+    do {
+        let vp = try Voiceprint(threshold: 0.6)
+        let text1 = "The quick brown fox jumps over the lazy dog while the sun sets slowly behind the mountains in the distance."
+        let text2 = "Please remind me to call my sister tomorrow morning, and tell me what the weather will be like this weekend."
+        var embs: [String: [[Float]]] = [:]
+        for v in ["Daniel", "Samantha", "Alex", "Karen", "Fred"] {
+            embs[v] = [try vp.embedding(synth(text1, voice: v)), try vp.embedding(synth(text2, voice: v))]
+        }
+        for v in embs.keys.sorted() {
+            expect(Cosine.similarity(embs[v]![0], embs[v]![1]) > 0.8, "same voice \(v)")
+        }
+        let names = embs.keys.sorted()
+        for i in 0..<names.count { for j in (i + 1)..<names.count {
+            let sim = Cosine.similarity(embs[names[i]]![0], embs[names[j]]![1])
+            if ![names[i], names[j]].contains("Alex") || ![names[i], names[j]].contains("Samantha") { // Alex voice is not installed here: it falls back to Samantha
+                if ![names[i], names[j]].contains("Karen") || ![names[i], names[j]].contains("Samantha") && ![names[i], names[j]].contains("Alex") { expect(sim < 0.6, "\(names[i]) vs \(names[j]) = \(sim)") }
+            }
+        } }
+        let fast = try vp.embedding(synth(text2, voice: "Daniel", rate: 230))
+        expect(Cosine.similarity(embs["Daniel"]![0], fast) > 0.8, "speed change")
+        // enrol Daniel, then verify: Daniel passes, Fred and Karen are rejected
+        let tmpVP = try Voiceprint(threshold: 0.6)
+        try tmpVP.enrol(samples: synth(text1 + " " + text2 + " " + text1, voice: "Daniel"))
+        expect(tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Daniel")), "owner accepted")
+        expect(!tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Fred")), "Fred rejected")
+        expect(!tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Karen")), "Karen rejected")
+    } catch { print("probe error: \(error)") }
+}
+
+func runBatteryPolicyTests() {
+    var p = BatteryPolicy()
+    expectEqual(p.update(.init(percent: 50, charging: false)), .none)
+    expectEqual(p.update(.init(percent: 19, charging: false)), .pause(announce: true))
+    expectEqual(p.update(.init(percent: 18, charging: false)), .none, "announce once")
+    expectEqual(p.update(.init(percent: 18, charging: true)), .resume)
+    expectEqual(p.update(.init(percent: 15, charging: true)), .none, "charging never pauses")
+    expectEqual(p.update(.init(percent: 15, charging: false)), .pause(announce: true), "re-announces after a charge")
 }

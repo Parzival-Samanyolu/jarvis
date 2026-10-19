@@ -8,7 +8,10 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [.executable(name: "jarvis", targets: ["jarvis"])],
     targets: [
-        .target(name: "JarvisCore"),
+        // Thin C wrapper over onnxruntime (brew install onnxruntime) for the wake word and voiceprint models.
+        .target(name: "COrt", cSettings: [.unsafeFlags(["-I/opt/homebrew/include/onnxruntime"])],
+                linkerSettings: [.unsafeFlags(["-L/opt/homebrew/lib", "-Xlinker", "-rpath", "-Xlinker", "/opt/homebrew/lib"]), .linkedLibrary("onnxruntime")]),
+        .target(name: "JarvisCore", dependencies: ["COrt"]),
         .executableTarget(name: "jarvis", dependencies: ["JarvisCore"]),
         .executableTarget(name: "selftest", dependencies: ["JarvisCore"]),
     ]

@@ -14,6 +14,7 @@ func expectEqual<T: Equatable>(_ a: T, _ b: T, _ msg: String = "", line: Int = #
 runSafetyTests()
 runSecretTests()
 runCoreTests()
+if CommandLine.arguments.contains("--ml") { runMLTests(); runVoiceprintProbe() }
 
 print("\(passes) passed, \(failures) failed")
 exit(failures == 0 ? 0 : 1)

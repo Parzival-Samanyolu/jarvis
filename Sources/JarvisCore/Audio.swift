@@ -63,6 +63,28 @@ public enum WAV {
     }
 }
 
+extension WAV {
+    /// Decodes a 16-bit mono PCM WAV written by `encode` (or by afconvert) into floats.
+    public static func decode(_ data: Data) -> [Float] {
+        guard data.count > 44 else { return [] }
+        var offset = 12
+        // find the "data" chunk
+        while offset + 8 <= data.count {
+            let id = String(decoding: data[offset..<(offset + 4)], as: UTF8.self)
+            let size = Int(data[offset + 4]) | Int(data[offset + 5]) << 8 | Int(data[offset + 6]) << 16 | Int(data[offset + 7]) << 24
+            if id == "data" {
+                let start = offset + 8, end = min(data.count, start + size)
+                var out: [Float] = []; out.reserveCapacity((end - start) / 2)
+                var i = start
+                while i + 1 < end { out.append(Float(Int16(bitPattern: UInt16(data[i]) | UInt16(data[i + 1]) << 8)) / 32768); i += 2 }
+                return out
+            }
+            offset += 8 + size + (size & 1)
+        }
+        return []
+    }
+}
+
 public enum Speech {
     /// whisper.cpp emits things like "[BLANK_AUDIO]" or "(silence)" for noise.
     public static func clean(_ raw: String) -> String {
