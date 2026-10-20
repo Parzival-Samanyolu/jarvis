@@ -8,9 +8,9 @@ public final class Speaker {
     public var onSpeakingChanged: ((Bool) -> Void)?
 
     public init() {
-        // Prefer the Premium download if installed; otherwise plain Daniel.
+        // Ava (US female). Prefer the Premium download if installed, then Enhanced, then plain Ava.
         let list = Self.run("/usr/bin/say", ["-v", "?"])
-        voice = list.contains("Daniel (Premium)") ? "Daniel (Premium)" : (list.contains("Daniel (Enhanced)") ? "Daniel (Enhanced)" : "Daniel")
+        voice = ["Ava (Premium)", "Ava (Enhanced)"].first { list.contains($0) } ?? "Ava"
     }
 
     static func run(_ exe: String, _ args: [String]) -> String {
