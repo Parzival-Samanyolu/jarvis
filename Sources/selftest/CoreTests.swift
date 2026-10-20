@@ -52,6 +52,8 @@ func runRouterTests() {
 
 func runIntentTests() {
     expectEqual(Intent.parse("Jarvis, mute."), .mute)
+    expectEqual(Intent.parse("Mycroft, mute."), .mute)
+    expectEqual(Intent.parse("mycroft stop"), .stop)
     expectEqual(Intent.parse("stop"), .stop)
     expectEqual(Intent.parse("Jarvis, use Opus"), .setMode(.opus))
     expectEqual(Intent.parse("Use auto."), .setMode(.auto))
@@ -336,10 +338,10 @@ func runMLTests() {
     do {
         let det = try WakeWordDetector()
         for v in ["Daniel", "Samantha", "Alex", "Karen"] {
-            let s = wakeScore(det, synth("Hey Jarvis", voice: v))
+            let s = wakeScore(det, synth(Models.wakePhrase, voice: v))
             expect(s > 0.8, "wake word '\(v)' scored \(s)")
         }
-        for phrase in ["Hello there, how are you", "Turn on the lights please", "What time is it"] {
+        for phrase in ["Hello there, how are you", "Turn on the lights please", "What time is it", "I use Microsoft Word at work", "Hey, my friend"] {
             let s = wakeScore(det, synth(phrase, voice: "Daniel"))
             expect(s < 0.1, "'\(phrase)' scored \(s)")
         }
@@ -347,7 +349,7 @@ func runMLTests() {
         // fires exactly once through feed() and respects the cooldown
         det.reset()
         var fires = 0
-        let all = [Float](repeating: 0, count: 16000) + synth("Hey Jarvis", voice: "Daniel") + [Float](repeating: 0, count: 16000)
+        let all = [Float](repeating: 0, count: 16000) + synth(Models.wakePhrase, voice: "Daniel") + [Float](repeating: 0, count: 16000)
         for i in stride(from: 0, to: all.count, by: 1280) { if det.feed(Array(all[i..<min(all.count, i + 1280)])) { fires += 1 } }
         expectEqual(fires, 1, "wake fires once")
     } catch { expect(false, "wake word: \(error)") }

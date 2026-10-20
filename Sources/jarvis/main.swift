@@ -15,7 +15,7 @@ func runCLI() async {
     }
     let brain = Brain(runner: CommandRunner(confirmer: TerminalConfirmer()))
     let speaker = CommandLine.arguments.contains("--speak") ? Speaker() : nil
-    print("Jarvis (terminal). Ctrl-D to quit. Modes: 'use haiku|sonnet|opus|auto'.")
+    print("Mycroft (terminal). Ctrl-D to quit. Modes: 'use haiku|sonnet|opus|auto'.")
     while true {
         print("\n> ", terminator: "")
         guard let line = readLine(), !line.isEmpty else { if feof(stdin) != 0 { break }; continue }
@@ -28,7 +28,7 @@ func runCLI() async {
         }
         do {
             let reply = try await brain.respond(to: line)
-            print("Jarvis [\(brain.lastModel?.label ?? "?")]: \(reply)")
+            print("Mycroft [\(brain.lastModel?.label ?? "?")]: \(reply)")
             if let speaker { await speaker.speak(reply) }
         } catch BrainError.offline { print("I'm afraid I'm offline, sir.") }
         catch { print("Error: \(error)") }

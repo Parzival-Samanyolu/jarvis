@@ -10,7 +10,7 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 | 6 `run_command`, safety, log, retry cap, secret stripping | Done and tested (46 safety checks). A live `ls` ran. |
 | 8 Memory, forget, weekly review logic | Done and tested. Haiku extraction live-tested. |
 | 9 Modes, usage log, $80 cap | Done and tested. Auto = Sonnet for everything, Opus for "think deeply", Haiku only at the cap (2026-10-20). |
-| 4 Wake word | Done. openWakeWord pipeline in Swift via onnxruntime. Scores 0.99+ on synthetic "Hey Jarvis", about 0.00001 on other speech and silence. |
+| 4 Wake word | Done. openWakeWord pipeline in Swift via onnxruntime. Wake phrase is "Hey Mycroft" (openWakeWord `hey_mycroft_v0.1`, switched from "Hey Jarvis" 2026-10-20). Tests: four synthetic voices fire, near-misses ("Microsoft", "Hey, my friend") and other speech do not. |
 | 5 Voiceprint | Done. Wespeaker ResNet34 + Swift fbank. Enrolled voice accepted, two other voices rejected (synthetic voices). |
 | 10 Notes, morning greeting | Written. Notes ordering unit-tested; live run waits on the Automation permission (see below). |
 | 11 Menu bar, mute, bundle, LaunchAgent | Done. App launches and stays up, with and without an enrolled voiceprint. LaunchAgent installed and running. App icon in `assets/` (redraw with `swift scripts/make-icon.swift`). |

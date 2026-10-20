@@ -9,7 +9,7 @@ brew install whisper-cpp onnxruntime        # speech-to-text, wake word and voic
 scripts/setup-whisper.sh                     # fetches the whisper base.en model
 swift run jarvis --set-key                   # stores the Anthropic key in the Keychain (or export ANTHROPIC_API_KEY)
 swift run jarvis --cli                       # terminal chat (add --speak to hear it)
-scripts/install.sh                           # builds, installs /Applications/Jarvis.app, starts it at login
+scripts/install.sh                           # builds, installs /Applications/Mycroft.app, starts it at login
 ```
 
 `scripts/install.sh uninstall` removes the app and login item and keeps your data. `jarvis --test-record 5` checks the current mic.
@@ -18,9 +18,9 @@ scripts/install.sh                           # builds, installs /Applications/Ja
 
 | What | Where |
 |---|---|
-| App | `/Applications/Jarvis.app` |
+| App | `/Applications/Mycroft.app` (the assistant was called Jarvis before 2026-10-20; internal names, data folders and the Notes folder still say Jarvis) |
 | Memory, usage, settings (`memory.md`, `usage.jsonl`, `state.json`) | `~/Library/Application Support/Jarvis/` |
-| Models (`models/`: whisper `ggml-base.en.bin`, openWakeWord `melspectrogram.onnx`, `embedding_model.onnx`, `hey_jarvis_v0.1.onnx`) | `~/Library/Application Support/Jarvis/models/` |
+| Models (`models/`: whisper `ggml-base.en.bin`, openWakeWord `melspectrogram.onnx`, `embedding_model.onnx`, `hey_mycroft_v0.1.onnx`) | `~/Library/Application Support/Jarvis/models/` |
 | Logs: `conversation.log` (what Jarvis heard and said), `commands.log`, `jarvis.log` (errors) | `~/Library/Logs/Jarvis/` |
 | API key | Keychain, service `jarvis` |
 | Login item | `~/Library/LaunchAgents/com.jarvis.app.plist` |
@@ -39,4 +39,4 @@ scripts/install.sh                           # builds, installs /Applications/Ja
 
 ## Usage
 
-⌥ Space starts listening; pressing it again stops Jarvis mid-answer. Or say "Hey Jarvis". There is no voice recognition: Jarvis answers anyone it hears. Voice commands: "use Opus", "how much have I spent", "what do you know about me", "forget that I…", "mute", "stop".
+⌥ Space starts listening; pressing it again stops Mycroft mid-answer. Or say "Hey Mycroft". There is no voice recognition: Mycroft answers anyone it hears. Voice commands: "use Opus", "how much have I spent", "what do you know about me", "forget that I…", "mute", "stop".

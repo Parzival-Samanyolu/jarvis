@@ -1,6 +1,6 @@
 import Foundation
 
-/// openWakeWord's "hey_jarvis" model, ported to Swift on top of onnxruntime.
+/// An openWakeWord model (`Models.wakeWordFile`), ported to Swift on top of onnxruntime.
 /// Pipeline per 80 ms chunk: raw audio -> mel spectrogram -> speech embedding -> wake-word score.
 public final class WakeWordDetector {
     public static let chunk = 1280                // 80 ms at 16 kHz
@@ -18,7 +18,7 @@ public final class WakeWordDetector {
     public init() throws {
         mel = try OnnxModel(path: Models.path("melspectrogram.onnx"))
         embed = try OnnxModel(path: Models.path("embedding_model.onnx"))
-        wake = try OnnxModel(path: Models.path("hey_jarvis_v0.1.onnx"))
+        wake = try OnnxModel(path: Models.path(Models.wakeWordFile))
     }
 
     /// Feed 16 kHz mono samples in -1...1. Returns true when the wake word was just heard.

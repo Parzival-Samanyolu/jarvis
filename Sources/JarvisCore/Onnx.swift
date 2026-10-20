@@ -28,8 +28,11 @@ public final class OnnxModel {
 
 public enum Models {
     public static func path(_ name: String) -> String { Paths.models.appendingPathComponent(name).path }
+    /// The wake word: openWakeWord's pre-trained "hey_mycroft" model (v0.5.1 release).
+    public static let wakeWordFile = "hey_mycroft_v0.1.onnx"
+    public static let wakePhrase = "Hey Mycroft"
     public static var wakeWordAvailable: Bool {
-        ["melspectrogram.onnx", "embedding_model.onnx", "hey_jarvis_v0.1.onnx"].allSatisfy { FileManager.default.fileExists(atPath: path($0)) }
+        ["melspectrogram.onnx", "embedding_model.onnx", wakeWordFile].allSatisfy { FileManager.default.fileExists(atPath: path($0)) }
     }
     public static var speakerAvailable: Bool { FileManager.default.fileExists(atPath: path("voxceleb_resnet34_LM.onnx")) }
 }

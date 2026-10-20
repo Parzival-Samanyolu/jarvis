@@ -68,7 +68,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     func buildMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu(); menu.delegate = self
-        statusLine = NSMenuItem(title: "Jarvis", action: nil, keyEquivalent: ""); statusLine.isEnabled = false
+        statusLine = NSMenuItem(title: "Mycroft", action: nil, keyEquivalent: ""); statusLine.isEnabled = false
         spendLine = NSMenuItem(title: "Spend this month", action: nil, keyEquivalent: ""); spendLine.isEnabled = false
         menu.addItem(statusLine); menu.addItem(spendLine); menu.addItem(.separator())
         wakeLine = NSMenuItem(title: "Wake word", action: nil, keyEquivalent: ""); wakeLine.isEnabled = false
@@ -85,17 +85,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             it.representedObject = m.rawValue; modeItems[m] = it; menu.addItem(it)
         }
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Jarvis", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit Mycroft", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
         render()
     }
 
     func render() {
         guard statusItem != nil else { return }
-        let img = NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Jarvis \(state.label)")
+        let img = NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
         statusItem.button?.image = img
         statusItem.button?.title = " \(brain.mode.label)"
-        statusLine.title = "Jarvis — \(state.label)"
+        statusLine.title = "Mycroft — \(state.label)"
         muteItem.title = state == .muted ? "Unmute" : "Mute"
         for (m, it) in modeItems { it.state = m == brain.mode ? .on : .off }
     }
@@ -146,7 +146,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     func wakeStatus() -> String {
         if wake == nil { return "Wake word: models missing" }
         if batteryPolicy.paused { return "Wake word: paused (battery under 20%)" }
-        return state == .muted ? "Wake word: muted" : "Wake word: \"Hey Jarvis\" is on"
+        return state == .muted ? "Wake word: muted" : "Wake word: \"\(Models.wakePhrase)\" is on"
     }
 
     /// The wake listener runs only when Jarvis is idle and the battery is fine.

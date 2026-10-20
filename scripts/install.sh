@@ -1,12 +1,12 @@
 #!/bin/zsh
-# Builds Jarvis, installs it to /Applications, moves data from the old ~/jarvis layout and starts it at login.
-#   App:   /Applications/Jarvis.app
+# Builds Mycroft, installs it to /Applications, moves data from the old ~/jarvis layout and starts it at login.
+#   App:   /Applications/Mycroft.app
 #   Data:  ~/Library/Application Support/Jarvis  (memory, usage, settings, models)
 #   Logs:  ~/Library/Logs/Jarvis                 (commands.log, jarvis.log)
 # Usage: scripts/install.sh [uninstall]
 set -euo pipefail
 cd "$(dirname "$0")/.."
-APP=/Applications/Jarvis.app
+APP=/Applications/Mycroft.app
 DATA="$HOME/Library/Application Support/Jarvis"
 LOGS="$HOME/Library/Logs/Jarvis"
 AGENT="$HOME/Library/LaunchAgents/com.jarvis.app.plist"
@@ -14,7 +14,7 @@ AGENT="$HOME/Library/LaunchAgents/com.jarvis.app.plist"
 stop() { launchctl bootout "gui/$UID/com.jarvis.app" 2>/dev/null || true; }
 
 if [[ "${1:-}" == "uninstall" ]]; then
-  stop; rm -f "$AGENT"; rm -rf "$APP"
+  stop; rm -f "$AGENT"; rm -rf "$APP" /Applications/Jarvis.app
   echo "Removed the app and login item. Your data is still in $DATA"; exit 0
 fi
 
@@ -38,9 +38,9 @@ if [[ -d "$OLD/models" ]]; then
   rmdir "$OLD/models" 2>/dev/null || true
 fi
 
-rm -rf "$APP"
-ditto Jarvis.app "$APP"
-rm -rf Jarvis.app            # one copy only: the one in /Applications
+rm -rf "$APP" /Applications/Jarvis.app   # Jarvis.app: the name before the Mycroft rename
+ditto Mycroft.app "$APP"
+rm -rf Mycroft.app           # one copy only: the one in /Applications
 
 mkdir -p "$HOME/Library/LaunchAgents"
 sed -e "s|__APP__|$APP|g" -e "s|__LOGS__|$LOGS|g" launchagent/com.jarvis.app.plist.template > "$AGENT"

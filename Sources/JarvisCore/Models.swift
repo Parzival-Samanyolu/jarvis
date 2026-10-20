@@ -51,8 +51,11 @@ public enum Intent: Equatable {
     public static func parse(_ raw: String) -> Intent {
         var t = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         t = t.trimmingCharacters(in: CharacterSet(charactersIn: ".!?,"))
-        if t.hasPrefix("jarvis,") { t = String(t.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
-        if t.hasPrefix("jarvis ") { t = String(t.dropFirst(7)) }
+        // The name in front ("Mycroft, mute"); "jarvis" was the name before the rename.
+        for name in ["mycroft", "jarvis"] {
+            if t.hasPrefix(name + ",") { t = String(t.dropFirst(name.count + 1)).trimmingCharacters(in: .whitespaces) }
+            else if t.hasPrefix(name + " ") { t = String(t.dropFirst(name.count + 1)) }
+        }
         if ["stop", "stop it", "be quiet", "quiet", "shut up", "enough"].contains(t) { return .stop }
         if ["mute", "mute yourself", "go mute", "mute listening"].contains(t) { return .mute }
         for m in Mode.allCases {
