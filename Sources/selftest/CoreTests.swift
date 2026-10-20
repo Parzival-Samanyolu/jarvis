@@ -152,6 +152,21 @@ func runBrainTests() async {
     expect((results?.first?["content"] as? String)?.contains("hello") == true, "tool result carries output")
     expectEqual(b2.conversation.exchanges.count, 1)
 
+    // History keeps the commands Jarvis ran, so the next turn can see the earlier action really happened
+    t2.responses = [textResp("Still done, sir.", model: "claude-sonnet-5-5")]
+    _ = try? await b2.respond(to: "did you do it?")
+    let hist = t2.requests.last?["messages"] as? [[String: Any]] ?? []
+    expectEqual(hist.map { $0["role"] as? String ?? "" }, ["user", "assistant", "user", "assistant", "user"], "user, tool call, result, reply, new question")
+    if hist.count == 5 {
+        let call = (hist[1]["content"] as? [[String: Any]])?.first
+        expectEqual(call?["type"] as? String, "tool_use")
+        expectEqual((call?["input"] as? [String: Any])?["command"] as? String, "echo hello")
+        let res = (hist[2]["content"] as? [[String: Any]])?.first
+        expectEqual(res?["tool_use_id"] as? String, call?["id"] as? String)
+        expect((res?["content"] as? String)?.contains("hello") == true, "result kept in history")
+        expectEqual(hist[3]["content"] as? String, "Done, sir.")
+    }
+
     // The system prompt is fixed for a whole request: thinking blocks from earlier tool rounds are bound to it,
     // and the API rejects them (400) if it changes, e.g. when the minute in the timestamp ticks over mid-request.
     let t7 = StubTransport([

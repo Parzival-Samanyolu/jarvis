@@ -54,8 +54,10 @@ public final class Brain {
         conversation.expireIfIdle()
         runner.beginRequest()
         let model = Router.model(for: text, mode: mode, capReached: usage.capReached())
-        let reply = try await run(messages: conversation.messages() + [["role": "user", "content": text]], model: model, deep: Router.deepThinking.contains(where: text.lowercased().contains))
-        conversation.add(user: text, assistant: reply)
+        var actions: [Conversation.Action] = []
+        let reply = try await run(messages: conversation.messages() + [["role": "user", "content": text]], model: model,
+                                  deep: Router.deepThinking.contains(where: text.lowercased().contains), actions: &actions)
+        conversation.add(user: text, assistant: reply, actions: actions)
         logExchange(heard: text, reply: reply)
         return reply
     }
@@ -63,7 +65,8 @@ public final class Brain {
     /// A self-contained request (morning greeting): does not touch the conversation.
     public func oneShot(_ prompt: String, model: Model = .haiku) async throws -> String {
         runner.beginRequest()
-        return try await run(messages: [["role": "user", "content": prompt]], model: usage.capReached() ? .haiku : model, deep: false)
+        var ignored: [Conversation.Action] = []
+        return try await run(messages: [["role": "user", "content": prompt]], model: usage.capReached() ? .haiku : model, deep: false, actions: &ignored)
     }
 
     /// After a conversation, extract lasting facts with Haiku and append them to memory.
@@ -101,7 +104,8 @@ public final class Brain {
 
     struct Response { var content: [[String: Any]]; var stopReason: String; var model: Model }
 
-    func run(messages initial: [[String: Any]], model: Model, deep: Bool) async throws -> String {
+    /// Runs the tool loop. Every client tool call is appended to `actions` (result shortened) for the history.
+    func run(messages initial: [[String: Any]], model: Model, deep: Bool, actions: inout [Conversation.Action]) async throws -> String {
         var msgs = initial
         lastModel = model
         // Built once per request: thinking blocks from earlier tool rounds are bound to this exact system prompt,
@@ -115,7 +119,9 @@ public final class Brain {
             case "tool_use":
                 var results: [[String: Any]] = []
                 for b in resp.content where b["type"] as? String == "tool_use" {
-                    results.append(await execute(b))
+                    let r = await execute(b)
+                    results.append(r)
+                    actions.append(Self.action(b, r))
                 }
                 msgs.append(["role": "user", "content": results])
             case "pause_turn":
@@ -165,6 +171,18 @@ public final class Brain {
              "input_schema": schema(["action": ["type": "string", "enum": ["save", "search", "last", "recent"]],
                                      "text": ["type": "string", "description": "Note text for save, or search words for search"]], required: ["action"])],
         ]
+    }
+
+    /// What history keeps of a tool call: the call itself and a short text form of its result (no images).
+    static func action(_ call: [String: Any], _ result: [String: Any]) -> Conversation.Action {
+        var text: String
+        if let s = result["content"] as? String { text = s }
+        else if let blocks = result["content"] as? [[String: Any]] {
+            text = blocks.compactMap { $0["type"] as? String == "image" ? "[screenshot taken]" : $0["text"] as? String }.joined(separator: " ")
+        } else { text = "" }
+        if text.count > 600 { text = String(text.prefix(600)) + " [shortened]" }
+        return Conversation.Action(id: call["id"] as? String ?? "", name: call["name"] as? String ?? "",
+                                   input: call["input"] as? [String: Any] ?? [:], result: text, isError: result["is_error"] as? Bool ?? false)
     }
 
     func execute(_ block: [String: Any]) async -> [String: Any] {

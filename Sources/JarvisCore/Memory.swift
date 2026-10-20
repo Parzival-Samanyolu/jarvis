@@ -96,7 +96,11 @@ public final class Memory {
 
 /// Short-term context: the last N exchanges, reset after a few minutes of silence.
 public final class Conversation {
-    public struct Exchange { public var user: String; public var assistant: String }
+    /// A tool call made while answering, kept so later turns can see it really happened.
+    public struct Action {
+        public var id: String; public var name: String; public var input: [String: Any]; public var result: String; public var isError: Bool
+    }
+    public struct Exchange { public var user: String; public var assistant: String; public var actions: [Action] = [] }
     public private(set) var exchanges: [Exchange] = []
     public var maxExchanges = 8
     public var idleReset: TimeInterval = 300
@@ -104,9 +108,9 @@ public final class Conversation {
 
     public init() {}
 
-    public func add(user: String, assistant: String, now: Date = Date()) {
+    public func add(user: String, assistant: String, actions: [Action] = [], now: Date = Date()) {
         expireIfIdle(now)
-        exchanges.append(Exchange(user: user, assistant: assistant))
+        exchanges.append(Exchange(user: user, assistant: assistant, actions: actions))
         if exchanges.count > maxExchanges { exchanges.removeFirst(exchanges.count - maxExchanges) }
         lastActivity = now
     }
@@ -117,8 +121,23 @@ public final class Conversation {
     }
     public func reset() { exchanges = []; lastActivity = nil }
 
+    /// History for the next request. Tool calls are replayed as tool_use / tool_result pairs (without thinking
+    /// blocks, which are bound to the request that made them); without them the model reads its own
+    /// "YouTube is open, sir" as a claim it never acted on.
     public func messages() -> [[String: Any]] {
-        exchanges.flatMap { [["role": "user", "content": $0.user], ["role": "assistant", "content": $0.assistant]] }
+        exchanges.flatMap { e -> [[String: Any]] in
+            var m: [[String: Any]] = [["role": "user", "content": e.user]]
+            if !e.actions.isEmpty {
+                m.append(["role": "assistant", "content": e.actions.map { ["type": "tool_use", "id": $0.id, "name": $0.name, "input": $0.input] }])
+                m.append(["role": "user", "content": e.actions.map { a -> [String: Any] in
+                    var r: [String: Any] = ["type": "tool_result", "tool_use_id": a.id, "content": a.result]
+                    if a.isError { r["is_error"] = true }
+                    return r
+                }])
+            }
+            m.append(["role": "assistant", "content": e.assistant])
+            return m
+        }
     }
     public var transcript: String { exchanges.map { "User: \($0.user)\nJarvis: \($0.assistant)" }.joined(separator: "\n") }
 }
