@@ -106,11 +106,12 @@ public final class Brain {
 
     /// Runs the tool loop. Every client tool call is appended to `actions` (result shortened) for the history.
     func run(messages initial: [[String: Any]], model: Model, deep: Bool, actions: inout [Conversation.Action]) async throws -> String {
-        var msgs = initial
+        // The clock rides in a role:system message after the owner's words, so the cached system prompt and
+        // tools stay byte-identical. Built once per request: thinking blocks from earlier tool rounds are
+        // bound to the conversation as sent.
+        var msgs = initial + [["role": "system", "content": Prompts.timeNote(clock())]]
         lastModel = model
-        // Built once per request: thinking blocks from earlier tool rounds are bound to this exact system prompt,
-        // so it must not change mid-request (the timestamp would tick over a minute boundary).
-        let system = Prompts.system(memory: memory.text(), now: clock())
+        let system = Prompts.system(memory: memory.text())
         for _ in 0..<Self.maxToolRounds {
             let body = requestBody(model: model, system: system, messages: msgs, deep: deep)
             let resp = try await call(body, model: model)
@@ -140,13 +141,22 @@ public final class Brain {
         var body: [String: Any] = [
             "model": model.rawValue,
             "max_tokens": 2048,
-            "system": system,
+            // Breakpoints: end of tools (memory edits don't evict them), end of system, plus automatic
+            // caching for the growing conversation.
+            "system": [["type": "text", "text": system, "cache_control": ["type": "ephemeral"]]],
             "messages": messages,
-            "tools": Self.tools(for: model),
+            "tools": Self.cachedTools(for: model),
+            "cache_control": ["type": "ephemeral"],
             "output_config": ["effort": model == .haiku ? "low" : (deep ? "high" : "medium")],
         ]
         if useFallbacks && model != .haiku { body["fallbacks"] = "default" }
         return body
+    }
+
+    static func cachedTools(for model: Model) -> [[String: Any]] {
+        var t = tools(for: model)
+        t[t.count - 1]["cache_control"] = ["type": "ephemeral"]
+        return t
     }
 
     static func tools(for model: Model) -> [[String: Any]] {

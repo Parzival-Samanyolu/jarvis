@@ -69,6 +69,11 @@ func runUsageTests() {
     // Opus: 1M in = $4, 1M out = $20
     expect(abs(UsageTracker.cost(model: .opus, input: 1_000_000, output: 1_000_000, cacheRead: 0, searches: 0) - 24) < 1e-9)
     expect(abs(UsageTracker.cost(model: .haiku, input: 1_000_000, output: 0, cacheRead: 0, searches: 3) - 0.13) < 1e-9)
+    // cache writes bill at 1.25x input, reads at the cache-read price
+    expect(abs(UsageTracker.cost(model: .sonnet, input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 1_000_000, searches: 0) - (2.5 + 0.2)) < 1e-9)
+    let cu = UsageTracker(url: tmp("cu.jsonl"))
+    let rec = cu.record(model: .sonnet, usage: ["input_tokens": 100, "output_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 1_000_000])
+    expect(abs(rec.cost - (100 * 2.0 / 1e6 + 2.5)) < 1e-9, "cache write counted: \(rec.cost)")
     u.record(model: .opus, usage: ["input_tokens": 1_000_000, "output_tokens": 0], now: now)
     u.record(model: .haiku, usage: ["input_tokens": 100_000, "output_tokens": 100_000, "server_tool_use": ["web_search_requests": 2]], now: now)
     let lastMonth = cal.date(byAdding: .month, value: -1, to: now)!
@@ -134,7 +139,7 @@ func runBrainTests() async {
     // second request includes history
     t.responses = [textResp("Berlin.")]
     _ = try? await brain.respond(to: "and Germany?")
-    expectEqual((t.requests[1]["messages"] as? [[String: Any]])?.count, 3)
+    expectEqual((t.requests[1]["messages"] as? [[String: Any]])?.count, 4)   // history (2), question, time note
 
     // Tool loop: run_command succeeds, result goes back, final text returned; sonnet gets fallbacks
     let t2 = StubTransport([
@@ -156,7 +161,7 @@ func runBrainTests() async {
     t2.responses = [textResp("Still done, sir.", model: "claude-sonnet-5-5")]
     _ = try? await b2.respond(to: "did you do it?")
     let hist = t2.requests.last?["messages"] as? [[String: Any]] ?? []
-    expectEqual(hist.map { $0["role"] as? String ?? "" }, ["user", "assistant", "user", "assistant", "user"], "user, tool call, result, reply, new question")
+    expectEqual(hist.map { $0["role"] as? String ?? "" }, ["user", "assistant", "user", "assistant", "user", "system"], "user, tool call, result, reply, new question, time note")
     if hist.count == 5 {
         let call = (hist[1]["content"] as? [[String: Any]])?.first
         expectEqual(call?["type"] as? String, "tool_use")
@@ -180,8 +185,21 @@ func runBrainTests() async {
     b7.mode = .sonnet
     _ = try? await b7.respond(to: "do two things")
     expectEqual(t7.requests.count, 3)
-    let systems = t7.requests.map { $0["system"] as? String ?? "" }
+    let systems = t7.requests.map { (($0["system"] as? [[String: Any]])?.first?["text"] as? String) ?? "" }
     expect(Set(systems).count == 1, "same system prompt in every round of one request")
+
+    // Prompt caching: tools and system are cached, the clock lives in a role:system message after the question
+    let r0 = t7.requests[0]
+    expect(r0["cache_control"] != nil, "automatic caching for the conversation")
+    let sys = (r0["system"] as? [[String: Any]])?.first
+    expect(sys?["cache_control"] != nil, "system block cached")
+    expect((sys?["text"] as? String)?.contains("Current date") == false, "no clock in the cached system prompt")
+    expect((r0["tools"] as? [[String: Any]])?.last?["cache_control"] != nil, "tools cached")
+    let m0 = r0["messages"] as? [[String: Any]] ?? []
+    expectEqual(m0.map { $0["role"] as? String ?? "" }, ["user", "system"], "question, then the time note")
+    expect((m0.last?["content"] as? String)?.contains("Current date and time") == true)
+    let m2 = t7.requests[2]["messages"] as? [[String: Any]] ?? []
+    expectEqual(m2.map { $0["role"] as? String ?? "" }, ["user", "system", "assistant", "user", "assistant", "user"], "time note stays put through the tool loop")
 
     // Declined risky command is reported, not run
     let marker = NSTemporaryDirectory() + "jarvis-marker-\(UUID().uuidString)"

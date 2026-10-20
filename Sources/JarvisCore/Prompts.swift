@@ -23,12 +23,18 @@ public enum Prompts {
     Output only the JSON array.
     """
 
-    public static func system(memory: String, now: Date = Date()) -> String {
-        let f = DateFormatter(); f.dateFormat = "EEEE d MMMM yyyy, HH:mm"
-        f.locale = Locale(identifier: "en_GB")
-        var s = persona + "\n\nCurrent date and time: \(f.string(from: now)). The owner lives in Konya, Turkey."
+    /// Stable across requests so it can be cached; the clock goes in `timeNote` instead.
+    public static func system(memory: String) -> String {
+        var s = persona + "\n\nThe owner lives in Konya, Turkey."
         let m = memory.trimmingCharacters(in: .whitespacesAndNewlines)
         s += "\n\n<memory>\n" + (m.isEmpty ? "(empty)" : m) + "\n</memory>"
         return s
+    }
+
+    /// Sent as a role:system message after the owner's words, so the cached prefix never changes with the time.
+    public static func timeNote(_ now: Date = Date()) -> String {
+        let f = DateFormatter(); f.dateFormat = "EEEE d MMMM yyyy, HH:mm"
+        f.locale = Locale(identifier: "en_GB")
+        return "Current date and time: \(f.string(from: now))."
     }
 }

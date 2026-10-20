@@ -6,6 +6,8 @@ public struct UsageRecord: Codable, Equatable {
     public var input: Int
     public var output: Int
     public var cacheRead: Int
+    /// Tokens written to the prompt cache (billed at 1.25x input). Missing in rows logged before caching.
+    public var cacheWrite: Int?
     public var searches: Int
     public var cost: Double
 }
@@ -19,11 +21,11 @@ public final class UsageTracker {
     let calendar: Calendar
     public init(url: URL = Paths.usage, calendar: Calendar = .current) { self.url = url; self.calendar = calendar }
 
-    public static func cost(model: Model, input: Int, output: Int, cacheRead: Int, searches: Int) -> Double {
+    public static func cost(model: Model, input: Int, output: Int, cacheRead: Int, cacheWrite: Int = 0, searches: Int) -> Double {
         let p = model.price
-        // `input` is uncached input only; cache reads are billed separately.
+        // `input` is uncached input only; cache reads and writes are billed separately (writes at 1.25x input, 5-minute TTL).
         return Double(input) / 1e6 * p.input + Double(output) / 1e6 * p.output
-            + Double(cacheRead) / 1e6 * p.cacheRead + Double(searches) * searchCost
+            + Double(cacheRead) / 1e6 * p.cacheRead + Double(cacheWrite) / 1e6 * p.input * 1.25 + Double(searches) * searchCost
     }
 
     /// Record one API response's `usage` object.
@@ -32,9 +34,10 @@ public final class UsageTracker {
         let input = usage["input_tokens"] as? Int ?? 0
         let output = usage["output_tokens"] as? Int ?? 0
         let cache = usage["cache_read_input_tokens"] as? Int ?? 0
+        let write = usage["cache_creation_input_tokens"] as? Int ?? 0
         let searches = ((usage["server_tool_use"] as? [String: Any])?["web_search_requests"] as? Int) ?? 0
-        let r = UsageRecord(ts: now, model: model.rawValue, input: input, output: output, cacheRead: cache, searches: searches,
-                            cost: Self.cost(model: model, input: input, output: output, cacheRead: cache, searches: searches))
+        let r = UsageRecord(ts: now, model: model.rawValue, input: input, output: output, cacheRead: cache, cacheWrite: write, searches: searches,
+                            cost: Self.cost(model: model, input: input, output: output, cacheRead: cache, cacheWrite: write, searches: searches))
         append(r)
         return r
     }
