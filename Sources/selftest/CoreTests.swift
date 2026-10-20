@@ -324,11 +324,22 @@ func runVoiceprintProbe() {
         let fast = try vp.embedding(synth(text2, voice: "Daniel", rate: 230))
         expect(Cosine.similarity(embs["Daniel"]![0], fast) > 0.8, "speed change")
         // enrol Daniel, then verify: Daniel passes, Fred and Karen are rejected
-        let tmpVP = try Voiceprint(threshold: 0.6)
-        try tmpVP.enrol(samples: synth(text1 + " " + text2 + " " + text1, voice: "Daniel"))
+        // never touch the real voiceprint.json
+        let file = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("vp-test-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let tmpVP = try Voiceprint(threshold: 0.6, url: file)
+        try tmpVP.enrol(samples: synth(text1 + " " + text2 + " " + text1, voice: "Daniel"), mic: "Built-in")
         expect(tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Daniel")), "owner accepted")
         expect(!tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Fred")), "Fred rejected")
         expect(!tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Karen")), "Karen rejected")
+        // a second mic adds a voiceprint instead of replacing the first; re-enrolling a mic replaces only that one
+        try tmpVP.enrol(samples: synth(text2 + " " + text1 + " " + text2, voice: "Samantha"), mic: "Headset")
+        try tmpVP.enrol(samples: synth(text2 + " " + text1 + " " + text2, voice: "Samantha"), mic: "Headset")
+        let reloaded = try Voiceprint(url: file)
+        expectEqual(reloaded.enrolledMics, ["Built-in", "Headset"], "one voiceprint per mic, persisted")
+        expect(reloaded.isOwner(synth("Open Safari and play some music please", voice: "Daniel")), "first mic still accepted")
+        expect(reloaded.isOwner(synth("Open Safari and play some music please", voice: "Samantha")), "second mic accepted")
+        expect(!reloaded.isOwner(synth("Open Safari and play some music please", voice: "Fred")), "Fred still rejected")
     } catch { print("probe error: \(error)") }
 }
 

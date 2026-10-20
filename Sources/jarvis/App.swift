@@ -29,6 +29,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     var enrolling = false
     var wakeLine: NSMenuItem!
     var enrolItem: NSMenuItem!
+    var forgetItem: NSMenuItem!
     var brain: Brain!
     var statusItem: NSStatusItem!
     var statusLine: NSMenuItem!
@@ -80,7 +81,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         menu.addItem(wakeLine)
         enrolItem = NSMenuItem(title: "Enroll my voice…", action: #selector(enrollVoice), keyEquivalent: ""); enrolItem.target = self
         enrolItem.isEnabled = voiceprint != nil
-        menu.addItem(enrolItem); menu.addItem(.separator())
+        menu.addItem(enrolItem)
+        forgetItem = NSMenuItem(title: "Forget my voice", action: #selector(forgetVoice), keyEquivalent: ""); forgetItem.target = self
+        menu.addItem(forgetItem); menu.addItem(.separator())
         let listen = NSMenuItem(title: "Listen now  (⌥ Space)", action: #selector(listenNow), keyEquivalent: ""); listen.target = self
         menu.addItem(listen)
         muteItem = NSMenuItem(title: "Mute", action: #selector(toggleMute), keyEquivalent: ""); muteItem.target = self
@@ -110,6 +113,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     nonisolated func menuWillOpen(_ menu: NSMenu) {
         Task { @MainActor in
             self.wakeLine.title = self.wakeStatus()
+            let mic = Recorder.currentMicName
+            let known = self.voiceprint?.enrolledMics ?? []
+            self.enrolItem.title = known.contains(mic) ? "Re-enroll my voice on \(mic)…" : "Enroll my voice on \(mic)…"
+            self.enrolItem.toolTip = known.isEmpty ? nil : "Enrolled on: " + known.joined(separator: ", ")
+            self.forgetItem.isHidden = known.isEmpty
             self.spendLine.title = "Spent this month: " + String(format: "$%.2f of $%.0f", self.brain.usage.monthTotal(), UsageTracker.cap)
         }
     }
@@ -154,6 +162,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         if wake == nil { return "Wake word: models missing" }
         guard let vp = voiceprint else { return "Wake word: voice model missing" }
         if !vp.isEnrolled { return "Wake word: off (enroll your voice first)" }
+        if !vp.enrolledMics.contains(Recorder.currentMicName) { return "Wake word: on (\(Recorder.currentMicName) not enrolled yet)" }
         if batteryPolicy.paused { return "Wake word: paused (battery under 20%)" }
         return state == .muted ? "Wake word: muted" : "Wake word: \"Hey Jarvis\" is on"
     }
@@ -205,12 +214,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             try? await Task.sleep(nanoseconds: 400_000_000)
             state = .listening
             var message = "I didn't catch that, sir. Shall we try again?"
+            let mic = Recorder.currentMicName
             if let wav = await recorder.record(startTimeout: 5, fixed: 30) {
                 let samples = WAV.decode((try? Data(contentsOf: wav)) ?? Data())
                 try? FileManager.default.removeItem(at: wav)
                 if Voiceprint.voicedSeconds(samples) < 10 { message = "I barely heard you, sir. Let's try that again, a little louder." }
-                else if (try? await Task.detached { try vp.enrol(samples: samples) }.value) != nil {
-                    message = "Thank you, sir. From now on I'll answer only to you."
+                else if (try? await Task.detached { try vp.enrol(samples: samples, mic: mic) }.value) != nil {
+                    NSLog("Jarvis: enrolled voice on %@ (mics: %@)", mic, vp.enrolledMics.joined(separator: ", "))
+                    message = vp.enrolledMics.count > 1
+                        ? "Thank you, sir. I know your voice on both microphones now."
+                        : "Thank you, sir. From now on I'll answer only to you. If you also use another microphone, enroll once more with it."
                 }
             }
             state = .idle
@@ -218,6 +231,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             enrolling = false
             updateWake()
         }
+    }
+
+    @objc func forgetVoice() {
+        guard let vp = voiceprint, !enrolling else { return }
+        try? vp.reset()
+        NSLog("Jarvis: voiceprints forgotten")
+        updateWake()
     }
 
     // MARK: Conversation

@@ -41,6 +41,9 @@ final class Recorder {
     }
     private var cancelled: Bool { lock.withLock { cancelFlag } }
 
+    /// Name of the mic recordings come from right now (e.g. "MacBook Air Microphone", "JBL Tune 680NC").
+    static var currentMicName: String { AVCaptureDevice.default(for: .audio)?.localizedName ?? "Default mic" }
+
     static func requestPermission() async -> Bool {
         await withCheckedContinuation { c in AVCaptureDevice.requestAccess(for: .audio) { c.resume(returning: $0) } }
     }

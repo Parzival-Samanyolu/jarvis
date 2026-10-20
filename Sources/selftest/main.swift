@@ -13,10 +13,11 @@ func expectEqual<T: Equatable>(_ a: T, _ b: T, _ msg: String = "", line: Int = #
 
 runSafetyTests()
 runSecretTests()
-if CommandLine.arguments.contains("--make-voiceprint") {   // test helper: enrol a synthetic voice into $JARVIS_HOME
+if CommandLine.arguments.contains("--make-voiceprint") {   // test helper: enrol a synthetic voice into $JARVIS_HOME (set it, or this overwrites the real voiceprint)
+    guard ProcessInfo.processInfo.environment["JARVIS_HOME"] != nil else { print("set JARVIS_HOME first"); exit(1) }
     let vp = try! Voiceprint()
     let t = "The quick brown fox jumps over the lazy dog while the sun sets slowly behind the mountains in the distance."
-    try! vp.enrol(samples: synth(t + " " + t + " " + t, voice: "Daniel"))
+    try! vp.enrol(samples: synth(t + " " + t + " " + t, voice: "Daniel"), mic: "Synthetic")
     print("enrolled"); exit(0)
 }
 runCoreTests()
