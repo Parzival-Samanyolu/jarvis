@@ -48,7 +48,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         brain = Brain(runner: CommandRunner(confirmer: self))
         if let raw = State.get("mode"), let m = Mode(rawValue: raw) { brain.mode = m }
         if Models.speakerAvailable { voiceprint = try? Voiceprint() }
-        if Models.wakeWordAvailable { wake = WakeListener(); wake?.onWake = { [weak self] in self?.wakeHeard() } }
+        if Models.wakeWordAvailable { wake = WakeListener(); wake?.onWake = { [weak self] in self?.wakeHeard() }; wake?.onDeviceChange = { [weak self] in self?.updateWake() } }
         buildMenu()
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in Task { @MainActor in await self?.checkBattery() } }
         if !hotkey.register({ [weak self] in self?.hotkeyPressed() }) {
