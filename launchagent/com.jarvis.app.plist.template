@@ -6,5 +6,5 @@
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ProcessType</key><string>Interactive</string>
-  <key>StandardErrorPath</key><string>__HOME__/jarvis/jarvis.log</string>
+  <key>StandardErrorPath</key><string>__LOGS__/jarvis.log</string>
 </dict></plist>

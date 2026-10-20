@@ -42,6 +42,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     func applicationDidFinishLaunching(_ n: Notification) {
         NSApp.setActivationPolicy(.accessory)
         brain = Brain(runner: CommandRunner(confirmer: self))
+        brain.conversationLog = Paths.conversationLog
         if let raw = State.get("mode"), let m = Mode(rawValue: raw) { brain.mode = m }
         if Models.wakeWordAvailable { wake = WakeListener(); wake?.onWake = { [weak self] in self?.wakeHeard() }; wake?.onDeviceChange = { [weak self] in self?.updateWake() } }
         buildMenu()

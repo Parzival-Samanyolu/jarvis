@@ -47,7 +47,8 @@ public final class CommandRunner {
         if r.exitCode != 0 { failuresThisRequest += 1 }
         var out = SecretStripper.strip(r.output)
         if out.count > Self.maxOutput { out = String(out.prefix(Self.maxOutput)) + "\n[output truncated]" }
-        if out.isEmpty { out = r.exitCode == 0 ? "(no output)" : "(no output)" }
+        // Many actions (osascript "play", open -a) print nothing; say plainly that it worked.
+        if out.isEmpty { out = r.exitCode == 0 ? "(success; the command printed nothing)" : "(failed; no error message)" }
         return CommandResult(output: "exit code \(r.exitCode)\n" + out, exitCode: r.exitCode)
     }
 

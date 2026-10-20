@@ -28,18 +28,13 @@ public enum Mode: String, CaseIterable, Codable {
 
 public enum Router {
     static let deepThinking = ["think deeply", "think hard", "think carefully", "deep thinking", "think this through", "really think", "use your best", "deeply"]
-    static let commandWords = ["open ", "launch ", "quit ", "close ", "run ", "create ", "make a folder", "make a file", "delete ", "remove ", "move ", "copy ", "rename ", "find ", "list ", "show me the files", "volume", "brightness", "mute the", "play ", "pause", "skip", "turn on", "turn off", "set ", "switch ", "install ", "download ", "organise", "organize", "empty the", "screenshot", "wifi", "bluetooth", "dark mode", "do not disturb", "lock the", "sleep", "restart", "shut down", "terminal", "folder", "file", "desktop", "downloads"]
-    static let screenWords = ["my screen", "the screen", "on screen", "look at this", "what am i looking at", "what's this", "what is this"]
 
-    /// Auto mode: Haiku for questions, Sonnet for commands and screen reading, Opus when asked for deep thinking.
+    /// Auto mode: Sonnet for everything, Opus when asked for deep thinking. Haiku only once the monthly cap is reached.
     public static func model(for text: String, mode: Mode, capReached: Bool) -> Model {
         if capReached { return .haiku }
         if let m = mode.fixedModel { return m }
-        let t = text.lowercased()
-        if deepThinking.contains(where: t.contains) { return .opus }
-        if screenWords.contains(where: t.contains) { return .sonnet }
-        if commandWords.contains(where: t.contains) { return .sonnet }
-        return .haiku
+        if deepThinking.contains(where: text.lowercased().contains) { return .opus }
+        return .sonnet
     }
 }
 

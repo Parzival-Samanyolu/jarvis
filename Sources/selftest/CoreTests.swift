@@ -41,7 +41,7 @@ func runNotesTests() {
 }
 
 func runRouterTests() {
-    expectEqual(Router.model(for: "what's the capital of France", mode: .auto, capReached: false), .haiku)
+    expectEqual(Router.model(for: "what's the capital of France", mode: .auto, capReached: false), .sonnet)   // Sonnet is the default
     expectEqual(Router.model(for: "open Safari", mode: .auto, capReached: false), .sonnet)
     expectEqual(Router.model(for: "what's on my screen", mode: .auto, capReached: false), .sonnet)
     expectEqual(Router.model(for: "think deeply about whether to move to Berlin", mode: .auto, capReached: false), .opus)
@@ -128,9 +128,7 @@ func runBrainTests() async {
     let brain = Brain(transport: t, runner: runner, usage: usage, memory: Memory(url: tmp("m.md")), apiKey: { "k" })
     let r = try? await brain.respond(to: "capital of France?")
     expectEqual(r, "Paris, sir.")
-    expectEqual(t.requests[0]["model"] as? String, "claude-haiku-5-5")
-    expect(t.requests[0]["fallbacks"] == nil, "haiku has no fallbacks")
-    expect(t.headers[0]["anthropic-beta"] == nil)
+    expectEqual(t.requests[0]["model"] as? String, "claude-sonnet-5-5")
     expectEqual(usage.records().count, 1)
     expectEqual(brain.conversation.exchanges.count, 1)
     // second request includes history
@@ -154,6 +152,22 @@ func runBrainTests() async {
     expect((results?.first?["content"] as? String)?.contains("hello") == true, "tool result carries output")
     expectEqual(b2.conversation.exchanges.count, 1)
 
+    // The system prompt is fixed for a whole request: thinking blocks from earlier tool rounds are bound to it,
+    // and the API rejects them (400) if it changes, e.g. when the minute in the timestamp ticks over mid-request.
+    let t7 = StubTransport([
+        (200, ["content": [["type": "tool_use", "id": "t1", "name": "run_command", "input": ["command": "echo one"]]], "stop_reason": "tool_use", "model": "claude-sonnet-5-5", "usage": ["input_tokens": 10, "output_tokens": 5]]),
+        (200, ["content": [["type": "tool_use", "id": "t2", "name": "run_command", "input": ["command": "echo two"]]], "stop_reason": "tool_use", "model": "claude-sonnet-5-5", "usage": ["input_tokens": 10, "output_tokens": 5]]),
+        textResp("Done, sir.", model: "claude-sonnet-5-5"),
+    ])
+    let b7 = Brain(transport: t7, runner: runner, usage: usage, memory: Memory(url: tmp("m.md")), apiKey: { "k" })
+    var tick = Date(timeIntervalSince1970: 1_800_000_000)
+    b7.clock = { tick = tick.addingTimeInterval(90); return tick }
+    b7.mode = .sonnet
+    _ = try? await b7.respond(to: "do two things")
+    expectEqual(t7.requests.count, 3)
+    let systems = t7.requests.map { $0["system"] as? String ?? "" }
+    expect(Set(systems).count == 1, "same system prompt in every round of one request")
+
     // Declined risky command is reported, not run
     let marker = NSTemporaryDirectory() + "jarvis-marker-\(UUID().uuidString)"
     let no = CommandRunner(confirmer: Yes(answer: false), logURL: tmp("c.log"))
@@ -161,6 +175,11 @@ func runBrainTests() async {
     expect(d.declined)
     let ok = await no.run("echo hi")
     expectEqual(ok.exitCode, 0); expect(ok.output.contains("hi"))
+    // A silent success (osascript "play") must read as success, not as "nothing happened"
+    let quiet = await no.run("true")
+    expect(quiet.output.contains("success"), quiet.output)
+    let quietFail = await no.run("false")
+    expect(!quietFail.output.contains("success"), quietFail.output)
 
     // Retry cap: 3 failures, then it refuses to run more
     let rr = CommandRunner(confirmer: Yes(), logURL: tmp("c.log"))

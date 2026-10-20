@@ -2,14 +2,17 @@ import Foundation
 import Security
 
 public enum Paths {
-    /// Data directory. Defaults to ~/jarvis (the repo; personal files are git-ignored).
-    public static var dir: URL {
-        if let p = ProcessInfo.processInfo.environment["JARVIS_HOME"] { return URL(fileURLWithPath: p) }
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("jarvis")
-    }
+    static var override: URL? { ProcessInfo.processInfo.environment["JARVIS_HOME"].map { URL(fileURLWithPath: $0) } }
+    static var library: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library") }
+
+    /// Data directory: ~/Library/Application Support/Jarvis. `JARVIS_HOME` puts data and logs in one folder instead.
+    public static var dir: URL { override ?? library.appendingPathComponent("Application Support/Jarvis") }
+    /// Log directory: ~/Library/Logs/Jarvis (shows up in Console.app).
+    public static var logs: URL { override ?? library.appendingPathComponent("Logs/Jarvis") }
     public static var memory: URL { dir.appendingPathComponent("memory.md") }
     public static var usage: URL { dir.appendingPathComponent("usage.jsonl") }
-    public static var commandLog: URL { dir.appendingPathComponent("commands.log") }
+    public static var commandLog: URL { logs.appendingPathComponent("commands.log") }
+    public static var conversationLog: URL { logs.appendingPathComponent("conversation.log") }
     public static var state: URL { dir.appendingPathComponent("state.json") }
     public static var models: URL { dir.appendingPathComponent("models") }
 }

@@ -35,6 +35,10 @@ public final class Brain {
     let runner: CommandRunner
     let apiKey: () -> String?
     var useFallbacks = true
+    /// When set, every exchange (what was heard, what Jarvis said) is appended here. Off in tests.
+    public var conversationLog: URL?
+    /// Current time for the system prompt (replaceable in tests).
+    var clock: () -> Date = Date.init
     public static let maxToolRounds = 8
 
     public init(transport: Transport = URLSessionTransport(), runner: CommandRunner, usage: UsageTracker = UsageTracker(),
@@ -52,6 +56,7 @@ public final class Brain {
         let model = Router.model(for: text, mode: mode, capReached: usage.capReached())
         let reply = try await run(messages: conversation.messages() + [["role": "user", "content": text]], model: model, deep: Router.deepThinking.contains(where: text.lowercased().contains))
         conversation.add(user: text, assistant: reply)
+        logExchange(heard: text, reply: reply)
         return reply
     }
 
@@ -83,6 +88,15 @@ public final class Brain {
         return arr.compactMap { $0 as? String }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     }
 
+    func logExchange(heard: String, reply: String) {
+        guard let url = conversationLog else { return }
+        let t = ISO8601DateFormatter().string(from: Date())
+        let line = "\(t)\tYou: \(heard)\n\(t)\tJarvis [\(lastModel?.label ?? "?")]: \(reply.replacingOccurrences(of: "\n", with: " "))\n"
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
+        else { try? line.write(to: url, atomically: true, encoding: .utf8) }
+    }
+
     // MARK: Tool loop
 
     struct Response { var content: [[String: Any]]; var stopReason: String; var model: Model }
@@ -90,8 +104,11 @@ public final class Brain {
     func run(messages initial: [[String: Any]], model: Model, deep: Bool) async throws -> String {
         var msgs = initial
         lastModel = model
+        // Built once per request: thinking blocks from earlier tool rounds are bound to this exact system prompt,
+        // so it must not change mid-request (the timestamp would tick over a minute boundary).
+        let system = Prompts.system(memory: memory.text(), now: clock())
         for _ in 0..<Self.maxToolRounds {
-            let body = requestBody(model: model, messages: msgs, deep: deep)
+            let body = requestBody(model: model, system: system, messages: msgs, deep: deep)
             let resp = try await call(body, model: model)
             msgs.append(["role": "assistant", "content": resp.content])
             switch resp.stopReason {
@@ -113,11 +130,11 @@ public final class Brain {
         return "I seem to have got myself into a loop, sir. Shall we try that again?"
     }
 
-    func requestBody(model: Model, messages: [[String: Any]], deep: Bool) -> [String: Any] {
+    func requestBody(model: Model, system: String, messages: [[String: Any]], deep: Bool) -> [String: Any] {
         var body: [String: Any] = [
             "model": model.rawValue,
             "max_tokens": 2048,
-            "system": Prompts.system(memory: memory.text()),
+            "system": system,
             "messages": messages,
             "tools": Self.tools(for: model),
             "output_config": ["effort": model == .haiku ? "low" : (deep ? "high" : "medium")],

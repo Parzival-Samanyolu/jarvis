@@ -6,15 +6,26 @@ A voice assistant for the M1 MacBook Air: answers questions, runs terminal comma
 
 ```sh
 brew install whisper-cpp onnxruntime        # speech-to-text, wake word and voiceprint runtime
-scripts/setup-whisper.sh                     # fetches the whisper base.en model into models/
+scripts/setup-whisper.sh                     # fetches the whisper base.en model
 swift run jarvis --set-key                   # stores the Anthropic key in the Keychain (or export ANTHROPIC_API_KEY)
 swift run jarvis --cli                       # terminal chat (add --speak to hear it)
-scripts/bundle.sh                            # builds Jarvis.app (menu-bar only, ad-hoc signed)
-open Jarvis.app
-scripts/install-launchagent.sh               # optional: start at login
+scripts/install.sh                           # builds, installs /Applications/Jarvis.app, starts it at login
 ```
 
-Models for the wake word and voiceprint live in `models/` (git-ignored): `melspectrogram.onnx`, `embedding_model.onnx`, `hey_jarvis_v0.1.onnx` (openWakeWord v0.5.1 releases) and `voxceleb_resnet34_LM.onnx` (Wespeaker, Hugging Face).
+`scripts/install.sh uninstall` removes the app and login item and keeps your data. `jarvis --test-record 5` checks the current mic.
+
+## Where things live
+
+| What | Where |
+|---|---|
+| App | `/Applications/Jarvis.app` |
+| Memory, usage, settings (`memory.md`, `usage.jsonl`, `state.json`) | `~/Library/Application Support/Jarvis/` |
+| Models (`models/`: whisper `ggml-base.en.bin`, openWakeWord `melspectrogram.onnx`, `embedding_model.onnx`, `hey_jarvis_v0.1.onnx`) | `~/Library/Application Support/Jarvis/models/` |
+| Logs: `conversation.log` (what Jarvis heard and said), `commands.log`, `jarvis.log` (errors) | `~/Library/Logs/Jarvis/` |
+| API key | Keychain, service `jarvis` |
+| Login item | `~/Library/LaunchAgents/com.jarvis.app.plist` |
+
+`JARVIS_HOME` puts data and logs in one folder instead (for development). The installer moves data from the old layout (files in the repo folder) on first run.
 
 ## Layout
 
@@ -24,7 +35,7 @@ Models for the wake word and voiceprint live in `models/` (git-ignored): `melspe
 - `Sources/selftest/` — test runner (`swift run selftest`, `--ml` adds the wake-word and voiceprint tests).
 - Prompts are in `Prompts.swift` rather than a `prompts/` folder.
 
-Personal data (`memory.md`, `usage.jsonl`, `commands.log`, `voiceprint.json`, `state.json`, `models/`) is git-ignored. `JARVIS_HOME` overrides the data directory.
+
 
 ## Usage
 

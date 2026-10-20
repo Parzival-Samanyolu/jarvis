@@ -9,7 +9,7 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 | 2 Spoken answers (`say -v Ava`) | Done. Uses "Ava (Premium)" or "(Enhanced)" if installed, else Ava (switched from Daniel 2026-10-20). |
 | 6 `run_command`, safety, log, retry cap, secret stripping | Done and tested (46 safety checks). A live `ls` ran. |
 | 8 Memory, forget, weekly review logic | Done and tested. Haiku extraction live-tested. |
-| 9 Modes, usage log, $80 cap | Done and tested (Auto routing, cap, monthly reset). |
+| 9 Modes, usage log, $80 cap | Done and tested. Auto = Sonnet for everything, Opus for "think deeply", Haiku only at the cap (2026-10-20). |
 | 4 Wake word | Done. openWakeWord pipeline in Swift via onnxruntime. Scores 0.99+ on synthetic "Hey Jarvis", about 0.00001 on other speech and silence. |
 | 5 Voiceprint | Done. Wespeaker ResNet34 + Swift fbank. Enrolled voice accepted, two other voices rejected (synthetic voices). |
 | 10 Notes, morning greeting | Written. Notes ordering unit-tested; live run waits on the Automation permission (see below). |
