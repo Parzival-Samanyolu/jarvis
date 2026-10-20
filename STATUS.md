@@ -6,7 +6,7 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 | Spec step | State |
 | --- | --- |
 | 1 Terminal Q&A, persona, web search | Done. Live-tested on Haiku, Sonnet and Opus. |
-| 2 Spoken answers (`say -v Ava`) | Done. Uses "Ava (Premium)" or "(Enhanced)" if installed, else Ava (switched from Daniel 2026-10-20). |
+| 2 Spoken answers (`say -v "Grandpa (English (UK))"`) | Done. Grandpa (UK male), falling back to Daniel. Chosen 2026-10-20 after Daniel and Ava. |
 | 6 `run_command`, safety, log, retry cap, secret stripping | Done and tested (46 safety checks). A live `ls` ran. |
 | 8 Memory, forget, weekly review logic | Done and tested. Haiku extraction live-tested. |
 | 9 Modes, usage log, $80 cap | Done and tested. Auto = Sonnet for everything, Opus for "think deeply", Haiku only at the cap (2026-10-20). |

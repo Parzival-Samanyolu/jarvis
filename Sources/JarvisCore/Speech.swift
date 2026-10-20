@@ -8,9 +8,9 @@ public final class Speaker {
     public var onSpeakingChanged: ((Bool) -> Void)?
 
     public init() {
-        // Ava (US female). Prefer the Premium download if installed, then Enhanced, then plain Ava.
+        // Grandpa (UK English, male), chosen 2026-10-20. Falls back to Daniel (UK male) if it isn't installed.
         let list = Self.run("/usr/bin/say", ["-v", "?"])
-        voice = ["Ava (Premium)", "Ava (Enhanced)"].first { list.contains($0) } ?? "Ava"
+        voice = ["Grandpa (English (UK))", "Daniel (Premium)", "Daniel (Enhanced)"].first { list.contains($0) } ?? "Daniel"
     }
 
     static func run(_ exe: String, _ args: [String]) -> String {
