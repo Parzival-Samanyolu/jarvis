@@ -28,4 +28,4 @@ Personal data (`memory.md`, `usage.jsonl`, `commands.log`, `voiceprint.json`, `s
 
 ## Usage
 
-⌥ Space starts listening; pressing it again stops Jarvis mid-answer. Say "Hey Jarvis" once your voice is enrolled (menu → Enroll my voice on <mic>…). Enroll once per microphone you use (built-in, headset); Jarvis keeps a voiceprint for each. Voice commands: "use Opus", "how much have I spent", "what do you know about me", "forget that I…", "mute", "stop".
+⌥ Space starts listening; pressing it again stops Jarvis mid-answer. Or say "Hey Jarvis". There is no voice recognition: Jarvis answers anyone it hears. Voice commands: "use Opus", "how much have I spent", "what do you know about me", "forget that I…", "mute", "stop".

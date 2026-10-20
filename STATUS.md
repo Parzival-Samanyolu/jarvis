@@ -17,20 +17,19 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 
 ## Not verified (needs a person at the Mac)
 1. **Microphone path.** `Recorder`, `WakeListener` and the VAD thresholds have never run on a real mic. Grant Microphone permission, then check the end-of-speech timing and wake-word sensitivity (`WakeWordDetector.threshold`, 0.5).
-2. **Voiceprint threshold** is 0.6, chosen from synthetic voices. Enroll with your real voice, watch `voice score` in Console (`log stream --process jarvis`), then edit `threshold` in `voiceprint.json`.
+2. **Voice recognition removed from the app** (2026-10-20, owner's call). The `Voiceprint` code and its tests remain in JarvisCore, unused by the app.
 3. **Permissions:** Microphone, Screen Recording (for `look_at_screen`), Automation (Notes), and Accessibility only if Mac-control commands need it. Ad-hoc signing means grants may reset after a rebuild.
 4. **Notes** (`Notes.swift`): first run creates the "Jarvis" folder. A test run timed out waiting for the Automation prompt ("allow control of Notes"); click Allow on first use. "Latest notes" now sorts by modification date.
 5. **Morning greeting** fires on `com.apple.screenIsUnlocked`. Not yet seen to fire after a real unlock.
-6. **"Stop" by voice while Jarvis speaks** relies on the voiceprint rejecting Jarvis's own voice through the speakers. Untested with real audio. The hotkey always works.
+6. **"Stop" by voice while Jarvis speaks** was removed with the voiceprint (Jarvis would hear itself). Press ⌥ Space to stop it.
 7. **Wake word pre-roll:** recording starts after the wake word fires, so a request spoken in the same breath may lose its first syllable. Add a ring buffer if that happens.
 8. **Screen capture** (`screencapture -x` + resize) runs and resizes to 1568 px, but the image is black until Screen Recording is granted to Jarvis.
 
 ## Decisions and deviations
 - **Swift, not Python** (user request). Replacements: Carbon hotkey, energy VAD, whisper.cpp CLI, openWakeWord and Wespeaker on onnxruntime, `URLSession` for the API (no Swift SDK exists).
 - **Tests are an executable** (`selftest`): Command Line Tools ship neither XCTest nor the Swift Testing macros.
-- **Wake word needs an enrolled voice.** Without one it stays off, so a TV cannot trigger Jarvis. Hotkey always works.
-- **Hotkey skips the voice check** for the first request only. Follow-ups, confirmations ("Shall I proceed, sir?") and "stop" are all voice-checked.
-- **Risky-command yes** also goes through the voiceprint when one is enrolled.
+- **Wake word answers anyone**, including a TV. Mute from the menu when needed. With Bluetooth headphones the always-open mic keeps them in headset mode.
+- **Risky-command yes** is accepted from any voice.
 - **API:** `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`) is sent for Sonnet and Opus, per the API guidance. It falls back to no fallbacks if rejected. Haiku uses the older `web_search_20250305`, Sonnet/Opus the `20260209` one. Effort is `low` for Haiku, `medium` for Sonnet/Opus, `high` when asked to think deeply.
 - Short-term context stores only user text and final replies (8 exchanges, 5 min idle reset), not tool traffic.
 - The Haiku cost tier above 100K prompt tokens is not modelled. Spend is estimated from `usage` plus $0.01 per web search.

@@ -4,6 +4,7 @@ import JarvisCore
 
 /// Converts mic buffers to 16 kHz mono floats.
 final class Resampler {
+
     let inFmt: AVAudioFormat
     let outFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
     let conv: AVAudioConverter
@@ -41,69 +42,85 @@ final class Recorder {
     }
     private var cancelled: Bool { lock.withLock { cancelFlag } }
 
-    /// Name of the mic recordings come from right now (e.g. "MacBook Air Microphone", "JBL Tune 680NC").
+    /// Name of the mic recordings come from right now (the system default input).
     static var currentMicName: String { AVCaptureDevice.default(for: .audio)?.localizedName ?? "Default mic" }
 
     static func requestPermission() async -> Bool {
         await withCheckedContinuation { c in AVCaptureDevice.requestAccess(for: .audio) { c.resume(returning: $0) } }
     }
 
-    /// Returns a WAV file URL, or nil if nobody spoke before the timeout (or it was cancelled, or the mic changed).
+    /// Returns a WAV file URL, or nil if nobody spoke before the timeout (or it was cancelled, or the mic kept failing).
     /// With `fixed` set, records exactly that many seconds and ignores silence.
     func record(startTimeout: TimeInterval, fixed: TimeInterval? = nil) async -> URL? {
         lock.withLock { cancelFlag = false; onCancel = nil }
         return await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
-            let engine = AVAudioEngine()
-            let input = engine.inputNode
-            guard let rs = Resampler(from: input.outputFormat(forBus: 0)) else { cont.resume(returning: nil); return }
-
             final class State {
                 var detector: EndpointDetector; var samples: [Float] = []; var frame: [Float] = []; var done = false
-                var observer: NSObjectProtocol?
+                var engine: AVAudioEngine?; var observer: NSObjectProtocol?; var restarts = 0
                 init(_ t: TimeInterval) { detector = EndpointDetector(startTimeout: t) }
             }
             let st = State(startTimeout)
             let frameLen = 16000 * EndpointDetector.frameMs / 1000
+
+            func teardown() {
+                if let o = st.observer { NotificationCenter.default.removeObserver(o); st.observer = nil }
+                st.engine?.inputNode.removeTap(onBus: 0); st.engine?.stop(); st.engine = nil
+            }
 
             // Always runs on the main queue, so `done` is only decided in one place.
             func finish(hadSpeech: Bool) {
                 DispatchQueue.main.async {
                     guard !st.done else { return }
                     st.done = true
-                    if let o = st.observer { NotificationCenter.default.removeObserver(o) }
                     self.lock.withLock { self.onCancel = nil }
-                    input.removeTap(onBus: 0); engine.stop()
+                    teardown()
                     guard hadSpeech, !self.cancelled else { cont.resume(returning: nil); return }
                     let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("jarvis-\(UUID().uuidString).wav")
                     do { try WAV.encode(st.samples).write(to: url); cont.resume(returning: url) } catch { cont.resume(returning: nil) }
                 }
             }
 
-            // A headset connecting or disconnecting stops the engine; end this recording instead of waiting forever.
-            st.observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { _ in
-                NSLog("Jarvis: audio device changed during recording")
-                finish(hadSpeech: false)
+            // Opens the current mic on a fresh engine. Audio already recorded is kept.
+            func open() {
+                let engine = AVAudioEngine()
+                let input = engine.inputNode
+                guard let rs = Resampler(from: input.outputFormat(forBus: 0)) else { finish(hadSpeech: false); return }
+                input.installTap(onBus: 0, bufferSize: 2048, format: rs.inFmt) { [weak self] buf, _ in
+                    guard let self, !st.done else { return }
+                    if self.cancelled { finish(hadSpeech: false); return }
+                    let chunk = rs.convert(buf)
+                    st.samples.append(contentsOf: chunk)
+                    if let fixed {
+                        if Double(st.samples.count) >= fixed * 16000 { finish(hadSpeech: true) }
+                        return
+                    }
+                    st.frame.append(contentsOf: chunk)
+                    while st.frame.count >= frameLen {
+                        let rms = EndpointDetector.rms(st.frame[0..<frameLen])
+                        st.frame.removeFirst(frameLen)
+                        if case .done(let had) = st.detector.feed(rms: rms) { finish(hadSpeech: had); return }
+                    }
+                }
+                // Device changes stop the engine: a headset connecting, or a Bluetooth headset switching to
+                // its mic profile the moment the mic opens. Reopen on the new device instead of giving up.
+                st.observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { _ in
+                    guard !st.done else { return }
+                    teardown()
+                    st.restarts += 1
+                    NSLog("Jarvis: mic changed during recording, reopening (%d)", st.restarts)
+                    guard st.restarts <= 5 else { finish(hadSpeech: false); return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { if !st.done { open() } }
+                }
+                st.engine = engine
+                do { engine.prepare(); try engine.start() } catch {
+                    NSLog("Jarvis: mic failed to start: %@", "\(error)")
+                    finish(hadSpeech: false)
+                }
             }
+
             lock.withLock { onCancel = { finish(hadSpeech: false) } }
             if cancelled { finish(hadSpeech: false); return }
-
-            input.installTap(onBus: 0, bufferSize: 2048, format: rs.inFmt) { [weak self] buf, _ in
-                guard let self, !st.done else { return }
-                if self.cancelled { finish(hadSpeech: false); return }
-                let chunk = rs.convert(buf)
-                st.samples.append(contentsOf: chunk)
-                if let fixed {
-                    if Double(st.samples.count) >= fixed * 16000 { finish(hadSpeech: true) }
-                    return
-                }
-                st.frame.append(contentsOf: chunk)
-                while st.frame.count >= frameLen {
-                    let rms = EndpointDetector.rms(st.frame[0..<frameLen])
-                    st.frame.removeFirst(frameLen)
-                    if case .done(let had) = st.detector.feed(rms: rms) { finish(hadSpeech: had); return }
-                }
-            }
-            do { engine.prepare(); try engine.start() } catch { finish(hadSpeech: false) }
+            if Thread.isMainThread { open() } else { DispatchQueue.main.async { open() } }
         }
     }
 }
