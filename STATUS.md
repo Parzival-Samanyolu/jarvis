@@ -20,7 +20,7 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 2. **Voice recognition removed from the app** (2026-10-20, owner's call). The `Voiceprint` code and its tests remain in JarvisCore, unused by the app.
 3. **Permissions:** Microphone, Screen Recording (for `look_at_screen`), Automation (Notes), and Accessibility only if Mac-control commands need it. Ad-hoc signing means grants may reset after a rebuild.
 4. **Notes** (`Notes.swift`): first run creates the "Jarvis" folder. A test run timed out waiting for the Automation prompt ("allow control of Notes"); click Allow on first use. "Latest notes" now sorts by modification date.
-5. **Morning greeting** fires on `com.apple.screenIsUnlocked`. Not yet seen to fire after a real unlock.
+5. **Opening line** fires on launch and on `com.apple.screenIsUnlocked` (at most once a minute). Not yet seen to fire after a real unlock. **Shutdown line before sleep** has not been heard on a real lid close.
 6. **"Stop" by voice while Jarvis speaks** was removed with the voiceprint (Jarvis would hear itself). Press ⌥ Space to stop it.
 7. **Wake word pre-roll:** recording starts after the wake word fires, so a request spoken in the same breath may lose its first syllable. Add a ring buffer if that happens.
 8. **Screen capture** (`screencapture -x` + resize) runs and resizes to 1568 px, but the image is black until Screen Recording is granted to Jarvis.
@@ -30,7 +30,8 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 - **Tests are an executable** (`selftest`): Command Line Tools ship neither XCTest nor the Swift Testing macros.
 - **Wake word answers anyone**, including a TV. Mute from the menu when needed. With Bluetooth headphones the always-open mic keeps them in headset mode.
 - **Risky-command yes** is accepted from any voice.
-- **API:** `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`) is sent for Sonnet and Opus, per the API guidance. It falls back to no fallbacks if rejected. Haiku uses the older `web_search_20250305`, Sonnet/Opus the `20260209` one. Effort is `low` for Haiku, `medium` for Sonnet/Opus, `high` when asked to think deeply.
+- **API:** `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`) is sent for Sonnet and Opus, per the API guidance. It falls back to no fallbacks if rejected. Replies stream (SSE) and are spoken sentence by sentence; a short holding line plays before a tool call if nothing has been said yet. All models use the basic `web_search_20250305`: the `20260209` variant's result filtering roughly doubled time to a spoken answer (2026-10-21). Effort is `low`, `high` when asked to think deeply (2026-10-21, was `medium` for Sonnet/Opus).
+- **Persona and fixed lines** (2026-10-21) come from the owner's butler brief. Fixed lines (`Lines.swift`) are spoken word for word without the model: the opening line at every launch and unlock ("Bloody hell mate, let's colonize India." before noon, a random "Systems online" line after), error lines when a request fails outright, and a shutdown line on quit and before sleep (IOKit holds sleep until it has been said, 10 s at most). The daily briefing (weather, notes) follows the opening line on the first unlock of the day.
 - Short-term context stores only user text and final replies (8 exchanges, 5 min idle reset), not tool traffic.
 - The Haiku cost tier above 100K prompt tokens is not modelled. Spend is estimated from `usage` plus $0.01 per web search.
 - Cost so far in testing: about $0.25.

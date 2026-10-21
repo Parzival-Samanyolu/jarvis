@@ -51,7 +51,8 @@ final class Recorder {
 
     /// Returns a WAV file URL, or nil if nobody spoke before the timeout (or it was cancelled, or the mic kept failing).
     /// With `fixed` set, records exactly that many seconds and ignores silence.
-    func record(startTimeout: TimeInterval, fixed: TimeInterval? = nil) async -> URL? {
+    /// `onAudio` sees every chunk as it arrives (on the audio thread), for live transcription.
+    func record(startTimeout: TimeInterval, fixed: TimeInterval? = nil, onAudio: (([Float]) -> Void)? = nil) async -> URL? {
         lock.withLock { cancelFlag = false; onCancel = nil }
         return await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
             final class State {
@@ -90,6 +91,7 @@ final class Recorder {
                     if self.cancelled { finish(hadSpeech: false); return }
                     let chunk = rs.convert(buf)
                     st.samples.append(contentsOf: chunk)
+                    onAudio?(chunk)
                     if let fixed {
                         if Double(st.samples.count) >= fixed * 16000 { finish(hadSpeech: true) }
                         return
@@ -173,21 +175,49 @@ final class WakeListener {
     }
 }
 
-/// Speech-to-text through whisper.cpp's `whisper-cli` with the base.en model.
-struct Transcriber {
+/// Speech-to-text. Apple's on-device transcriber when it's available (macOS 26+): it listens while the owner
+/// talks, so the words are ready almost as soon as they stop. Whisper (whisper.cpp, base.en) is the fallback.
+final class Transcriber {
     static let cliCandidates = ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli"]
     static var cli: String? { cliCandidates.first { FileManager.default.isExecutableFile(atPath: $0) } }
     static var model: String { Paths.models.appendingPathComponent("ggml-base.en.bin").path }
-    static var available: Bool { cli != nil && FileManager.default.fileExists(atPath: model) }
+    static var whisperAvailable: Bool { cli != nil && FileManager.default.fileExists(atPath: model) }
 
-    func transcribe(_ wav: URL) async -> String {
+    /// Set once Apple's transcriber is ready (its model is downloaded on first launch).
+    private(set) var appleLocale: Locale?
+    var available: Bool { appleLocale != nil || Self.whisperAvailable }
+
+    func prepare() async {
+        if #available(macOS 26, *) { appleLocale = await LiveTranscriber.prepare() }
+        NSLog("Jarvis: speech-to-text is %@", appleLocale.map { "Apple (\($0.identifier))" } ?? (Self.whisperAvailable ? "Whisper" : "missing"))
+    }
+
+    /// A live session to feed while recording, or nil to use Whisper on the finished recording.
+    func begin() -> LiveSession? {
+        guard let appleLocale else { return nil }
+        if #available(macOS 26, *) { return LiveSession(LiveTranscriber(locale: appleLocale)) }
+        return nil
+    }
+
+    /// The words in `wav`, from the live session if there was one, otherwise (or if it failed) from Whisper.
+    func transcribe(_ wav: URL, live: LiveSession? = nil) async -> String {
         defer { try? FileManager.default.removeItem(at: wav) }
-        guard let cli = Self.cli else { return "" }
+        if let live {
+            do {
+                let text = Speech.clean(try await live.finish())
+                if !text.isEmpty { return text }
+            } catch { NSLog("Jarvis: Apple transcription failed: %@", "\(error)") }
+        }
+        return await Self.whisper(wav)
+    }
+
+    static func whisper(_ wav: URL) async -> String {
+        guard let cli else { return "" }
         return await withCheckedContinuation { cont in
             DispatchQueue.global().async {
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: cli)
-                p.arguments = ["-m", Self.model, "-f", wav.path, "-nt", "-np", "-l", "en"]
+                p.arguments = ["-m", model, "-f", wav.path, "-nt", "-np", "-l", "en"]
                 let pipe = Pipe(); p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
                 do { try p.run() } catch { cont.resume(returning: ""); return }
                 let d = pipe.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
@@ -195,4 +225,16 @@ struct Transcriber {
             }
         }
     }
+}
+
+/// Wraps the macOS 26 transcriber so the rest of the app needn't carry availability checks.
+final class LiveSession {
+    private let feedFn: ([Float]) -> Void
+    private let finishFn: () async throws -> String
+    private let cancelFn: () -> Void
+    @available(macOS 26, *)
+    init(_ t: LiveTranscriber) { feedFn = t.feed; finishFn = t.finish; cancelFn = t.cancel }
+    func feed(_ s: [Float]) { feedFn(s) }
+    func finish() async throws -> String { try await finishFn() }
+    func cancel() { cancelFn() }
 }

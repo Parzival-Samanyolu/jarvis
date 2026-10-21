@@ -112,3 +112,28 @@ func runLiveSpeechTests() async {
     _ = try? await b3.respond(to: "think hard about tea", speech: LiveSpeech { _ in })
     expectEqual((t3.requests[0]["output_config"] as? [String: Any])?["effort"] as? String, "high")
 }
+
+func runOfflineTests() async {
+    expectEqual(OfflineAction.parse("What time is it?"), .time)
+    expectEqual(OfflineAction.parse("Mycroft, what's the time"), .time)
+    expectEqual(OfflineAction.parse("What day is it today?"), .date)
+    expectEqual(OfflineAction.parse("How's my battery?"), .battery)
+    expectEqual(OfflineAction.parse("Turn the volume up"), .volumeUp)
+    expectEqual(OfflineAction.parse("Make it quieter, volume down please"), .volumeDown)
+    expectEqual(OfflineAction.parse("Set the volume to 30 percent."), .volumeSet(30))
+    expectEqual(OfflineAction.parse("Open Safari."), .open("Safari"))
+    expectEqual(OfflineAction.parse("please launch system settings"), .open("System Settings"))
+    expectEqual(OfflineAction.parse("Make a note that I need to buy Milk."), .note("I need to buy Milk"))
+    expectEqual(OfflineAction.parse("Note that the boiler man comes Tuesday"), .note("the boiler man comes Tuesday"))
+    expectEqual(OfflineAction.parse("Who won the Champions League?"), nil)
+    expectEqual(OfflineAction.parse("What's the weather in Konya?"), nil)
+    let cal = Calendar(identifier: .gregorian)
+    let d = cal.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 14, minute: 5))!
+    let time = await OfflineAction.time.perform(now: d)
+    expect(time.hasPrefix("It's 2:05") && time.hasSuffix("sir."), time)
+    expectEqual(await OfflineAction.date.perform(now: d), "It's Wednesday 21 October, sir.")
+    expectEqual(await OfflineAction.open("Definitely Not An App 123").perform(), "I can't find an app called Definitely Not An App 123, sir.")
+    expectEqual(Lines.offline.count, 5)
+    var p = LinePicker(); var last = ""
+    for _ in 0..<20 { let l = p.offline(); expect(l != last); last = l }
+}

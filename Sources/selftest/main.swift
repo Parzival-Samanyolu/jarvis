@@ -23,7 +23,7 @@ if CommandLine.arguments.contains("--make-voiceprint") {   // test helper: enrol
 runCoreTests()
 runLinesTests(); runSplitterTests()
 do { try runAssemblerTests() } catch { failures += 1; print("FAIL assembler threw \(error)") }
-do { let sem = DispatchSemaphore(value: 0); Task { await runLiveSpeechTests(); sem.signal() }; sem.wait() }
+do { let sem = DispatchSemaphore(value: 0); Task { await runLiveSpeechTests(); await runOfflineTests(); sem.signal() }; sem.wait() }
 if CommandLine.arguments.contains("--ml") { runMLTests(); runVoiceprintProbe() }
 
 print("\(passes) passed, \(failures) failed")

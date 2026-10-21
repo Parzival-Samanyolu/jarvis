@@ -49,7 +49,14 @@ public enum Lines {
     public static let working = ["One moment, sir.", "Very good, sir. One moment.", "Certainly, sir. Bear with me."]
     public static let searching = ["Let me look into it, sir.", "One moment, sir. Consulting the wires.", "Checking now, sir."]
 
-    public static let offline = "I'm afraid I'm offline, sir. I suspect the French have cut the cable."
+    /// When Claude can't be reached and the request isn't one Mycroft can handle alone.
+    public static let offline = [
+        "I'm afraid we're offline, sir. I suspect the French have cut the cable.",
+        "No connection, sir. Rather like the British Rail timetable, I can promise nothing.",
+        "The internet appears to have declared independence, sir. I can't think where it got the idea.",
+        "I've lost the line, sir. Even state television is more reliable, and that's saying something.",
+        "The connection has gone, sir. I would ask the KGB where it went, but they would only deny it ever existed.",
+    ]
 
     public static func startup(hour: Int) -> [String] {
         hour >= 12 && hour < 18 ? startupAnyTime + [afternoonOnly] : startupAnyTime
@@ -73,5 +80,6 @@ public struct LinePicker {
         return hour < 12 ? Lines.morning : pick(Lines.startup(hour: hour), key: "startup")
     }
     public mutating func error() -> String { pick(Lines.errors, key: "error") }
+    public mutating func offline() -> String { pick(Lines.offline, key: "offline") }
     public mutating func shutdown() -> String { pick(Lines.shutdown, key: "shutdown") }
 }

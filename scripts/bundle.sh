@@ -24,6 +24,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Mycroft listens to your voice requests.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Mycroft turns your voice requests into text on this Mac.</string>
   <key>NSAppleEventsUsageDescription</key><string>Mycroft controls Notes and other apps for you.</string>
 </dict></plist>
 PLIST

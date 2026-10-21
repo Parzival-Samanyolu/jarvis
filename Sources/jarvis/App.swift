@@ -59,13 +59,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.opening() }
         }
+        Connectivity.shared.onChange = { [weak self] _ in Task { @MainActor in self?.render() } }
+        Connectivity.shared.start()
         sleepWatcher.onWillSleep = { [weak self] done in self?.goingToSleep(done) ?? done() }
         sleepWatcher.start()
+        let sttReady = Task { await transcriber.prepare() }   // may download Apple's speech model the first time
         Task {
             _ = await Recorder.requestPermission()
             await opening()
+            await sttReady.value
             if Keychain.apiKey() == nil { await say("I have no API key, sir. Run jarvis, dash dash set key, in the terminal.") }
-            else if !Transcriber.available { await say("I can't hear you yet, sir. Whisper is not installed. See the setup script.") }
+            else if !transcriber.available { await say("I can't hear you yet, sir. Speech recognition isn't available. See the setup script.") }
             await checkBattery()
             updateWake()
         }
@@ -103,7 +107,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         let img = state == .idle ? ButlerGlyph.image : NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
         statusItem.button?.image = img
         statusItem.button?.title = " \(brain.mode.label)"
-        statusLine.title = "Mycroft — \(state.label)"
+        statusLine.title = "Mycroft — \(state.label)" + (Connectivity.shared.isOnline ? "" : " (offline)")
         muteItem.title = state == .muted ? "Unmute" : "Mute"
         for (m, it) in modeItems { it.state = m == brain.mode ? .on : .off }
     }
@@ -189,15 +193,24 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         var first = true
         while !Task.isCancelled {
             state = .listening
-            guard let wav = await recorder.record(startTimeout: first ? 8 : 5) else { break }
-            state = .thinking
-            let text = await transcriber.transcribe(wav)
+            guard let text = await hear(startTimeout: first ? 8 : 5, then: .thinking) else { break }
             if text.isEmpty { if first { break } else { continue } }
             first = false
             if !(await handle(text)) { break }
         }
         if state != .muted { state = .idle }
         if !Task.isCancelled || brain.conversation.exchanges.count > 0 { Task { _ = await brain.learn() } }
+    }
+
+    /// Records one utterance and returns its words (nil if nobody spoke). Apple's transcriber, when available,
+    /// listens during the recording, so there's almost no wait once the owner stops.
+    func hear(startTimeout: TimeInterval, then after: JState? = nil) async -> String? {
+        let live = transcriber.begin()
+        guard let wav = await recorder.record(startTimeout: startTimeout, onAudio: live.map { l in { l.feed($0) } }) else {
+            live?.cancel(); return nil
+        }
+        if let after { state = after }
+        return await transcriber.transcribe(wav, live: live)
     }
 
     /// Returns false when the conversation should end.
@@ -214,6 +227,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             return true
         case .none: break
         }
+        if !Connectivity.shared.isOnline { await answerOffline(text); return true }
         do {
             _ = try await brain.respond(to: text, speech: liveSpeech())
             let notice = await capNotice()
@@ -224,13 +238,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             if Task.isCancelled { return false }   // the hotkey stopped it; say nothing
             await speaker.drain()
             switch error {
-            case BrainError.offline: await say(Lines.offline)
+            case BrainError.offline: await answerOffline(text); return true
             case BrainError.noKey: await say("I have no API key, sir.")
             default: NSLog("Jarvis error: \(error)"); await say(lines.error())
             }
             return false
         }
         return !Task.isCancelled
+    }
+
+    /// Without Claude: simple requests are handled here with ready-made replies, anything else gets an offline line.
+    func answerOffline(_ text: String) async {
+        if let action = OfflineAction.parse(text) { await say(await action.perform()) }
+        else { await say(lines.offline()) }
     }
 
     /// Speaks each sentence as soon as it streams in, and shows the speaking state.
@@ -271,11 +291,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
                 self.state = .confirming
                 await self.speaker.speak("\(description). Shall I proceed, sir?")
                 guard self.confirmCont != nil else { return }
-                let wav = await self.recorder.record(startTimeout: 6)
+                let heard = await self.hear(startTimeout: 6)
                 guard self.confirmCont != nil else { return }
-                var answer = false
-                if let wav { answer = Speech.yesNo(await self.transcriber.transcribe(wav)) == .yes }
-                self.resolveConfirm(answer)
+                self.resolveConfirm(heard.map { Speech.yesNo($0) == .yes } ?? false)
             }
         }
     }
@@ -368,8 +386,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             state = .listening
             var verdict: Bool?
             for _ in 0..<2 where verdict == nil {
-                guard let wav = await recorder.record(startTimeout: 7) else { break }
-                verdict = Speech.keepOrDelete(await transcriber.transcribe(wav))
+                guard let heard = await hear(startTimeout: 7) else { break }
+                verdict = Speech.keepOrDelete(heard)
             }
             if verdict == false { brain.memory.remove(line: line); await say("Deleted.") }
         }
