@@ -336,7 +336,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     }
 
     func briefing() async {
-        guard Keychain.apiKey() != nil else { return }
+        // Offline: skip at once; it's tried again at the next unlock, since the day isn't marked as briefed.
+        guard Keychain.apiKey() != nil, Connectivity.shared.isOnline else { return }
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
         let today = f.string(from: Date())
         guard State.get("lastGreeting") != today else { return }
