@@ -147,6 +147,8 @@ if args.contains("--set-key") {
         exit(0)
     }
     dispatchMain()
+} else if args.contains("--settings") {
+    DistributedNotificationCenter.default().postNotificationName(.init("com.jarvis.openSettings"), object: nil, userInfo: nil, deliverImmediately: true)
 } else if let i = args.firstIndex(of: "--test-hear") {
     // Diagnostic: the Mac says a request aloud; the real mic and the app's live transcription path write it down.
     let phrase = i + 1 < args.count ? args[i + 1] : "What's the weather like in Konya today?"

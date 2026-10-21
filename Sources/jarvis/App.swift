@@ -60,6 +60,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.opening() }
         }
+        // `jarvis --settings` (or this notification) opens the Settings window in the running app.
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.jarvis.openSettings"), object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.openSettings() }
+        }
         Connectivity.shared.onChange = { [weak self] _ in Task { @MainActor in self?.render() } }
         Connectivity.shared.start()
         sleepWatcher.onWillSleep = { [weak self] done in self?.goingToSleep(done) ?? done() }
@@ -98,6 +102,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             it.representedObject = m.rawValue; modeItems[m] = it; menu.addItem(it)
         }
         menu.addItem(.separator())
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","); settings.target = self
+        menu.addItem(settings)
         menu.addItem(NSMenuItem(title: "Quit Mycroft", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
         render()
@@ -121,6 +127,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     }
 
     @objc func listenNow() { hotkeyPressed() }
+    @objc func openSettings() { SettingsWindow.show(app: self) }
     @objc func toggleMute() { if state == .muted { state = .idle } else { cancelSession(); state = .muted } }
     @objc func pickMode(_ s: NSMenuItem) {
         guard let raw = s.representedObject as? String, let m = Mode(rawValue: raw) else { return }
@@ -158,6 +165,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     func wakeStatus() -> String {
         if wake == nil { return "Wake word: models missing" }
+        if !Settings.wakeWord { return "Wake word: off (Settings)" }
         if batteryPolicy.paused { return "Wake word: paused (battery under 20%)" }
         return state == .muted ? "Wake word: muted" : "Wake word: \"\(Models.wakePhrase)\" is on"
     }
@@ -165,7 +173,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     /// The wake listener runs only when Jarvis is idle and the battery is fine.
     func updateWake() {
         guard let wake else { return }
-        let should = state == .idle && sessionTask == nil && !greeting && !batteryPolicy.paused
+        let should = Settings.wakeWord && state == .idle && sessionTask == nil && !greeting && !batteryPolicy.paused
         if should { wake.start() } else { wake.stop() }
     }
 
@@ -198,6 +206,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             if text.isEmpty { if first { break } else { continue } }
             first = false
             if !(await handle(text)) { break }
+            if !Settings.followUp { break }   // one question per wake word
         }
         if state != .muted { state = .idle }
         if !Task.isCancelled || brain.conversation.exchanges.count > 0 { Task { _ = await brain.learn() } }
@@ -267,11 +276,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         let month = String(ISO8601DateFormatter().string(from: Date()).prefix(7))
         if brain.usage.capReached(), State.get("capNotice") != month {
             State.set("capNotice", month)
-            return "Also, sir, you've reached your eighty dollar cap. I'll use Haiku only until the month resets."
+            return "Also, sir, you've reached your \(Int(UsageTracker.cap)) dollar cap. I'll use Haiku only until the month resets."
         }
         if brain.usage.nearCap(), State.get("warnNotice") != month {
             State.set("warnNotice", month)
-            return "A word of caution, sir: you're nearing your eighty dollar cap."
+            return "A word of caution, sir: you're nearing your \(Int(UsageTracker.cap)) dollar cap."
         }
         return ""
     }
@@ -315,8 +324,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         if let t = lastOpening, Date().timeIntervalSince(t) < 60 { return }   // logging in fires launch and unlock together
         lastOpening = Date()
         greeting = true; defer { greeting = false; updateWake() }
-        await say(lines.opening())
-        await briefing()
+        if Settings.openingLine { await say(lines.opening()) }
+        if Settings.briefing { await briefing() }
         if state != .muted { state = .idle }
     }
 
@@ -329,7 +338,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         state = .thinking
         let notes = Notes.recent(3)
         let prompt = """
-        It is the owner's first time at the Mac today, and you have just greeted them, so do not greet them again. Give today's weather in Konya (use web search; just conditions and temperature in Celsius), and mention their latest notes if there are any. Two sentences in total, no more.
+        It is the owner's first time at the Mac today, and you have just greeted them, so do not greet them again. Give today's weather in \(Settings.city) (use web search; just conditions and temperature in Celsius), and mention their latest notes if there are any. Two sentences in total, no more.
 
         Latest notes (may be empty):
         \(notes)
@@ -349,7 +358,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         quitting = true
         resolveConfirm(false); cancelSession()
         Task {
-            await speakBounded(lines.shutdown())
+            if Settings.shutdownLine { await speakBounded(lines.shutdown()) }
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
@@ -357,7 +366,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     /// macOS holds sleep until `done` is called (it gives up after about 30 seconds).
     func goingToSleep(_ done: @escaping () -> Void) {
-        guard !quitting, state != .muted else { done(); return }
+        guard !quitting, state != .muted, Settings.shutdownLine else { done(); return }
         resolveConfirm(false); cancelSession(); state = .idle
         Task {
             await speakBounded(lines.shutdown())

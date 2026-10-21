@@ -7,7 +7,7 @@ import Speech
 @available(macOS 26, *)
 public final class LiveTranscriber: @unchecked Sendable {
     /// Names it would otherwise mishear.
-    public static let hints = ["Mycroft", "Konya", "Haiku", "Sonnet", "Opus", "Safari", "Spotify"]
+    public static var hints: [String] { ["Mycroft", Settings.cityName, "Haiku", "Sonnet", "Opus", "Safari", "Spotify"] }
     static let sourceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
 
     private let raw: AsyncStream<[Float]>.Continuation

@@ -214,11 +214,12 @@ public final class Brain {
 
     static func tools(for model: Model) -> [[String: Any]] {
         let search: [String: Any] = [
-            // The basic search, not web_search_20260209: its result filtering roughly doubled spoken answer
-            // times (weather 11s vs 6.5s, a sports result 16.6s vs 3.5s, measured 2026-10-21).
-            "type": "web_search_20250305",
+            // Fast search is the basic tool: web_search_20260209's result filtering roughly doubled spoken answer
+            // times (weather 11s vs 6.5s, a sports result 16.6s vs 3.5s, measured 2026-10-21), but reads fewer
+            // result tokens, so it's the cheaper choice in Settings.
+            "type": Settings.fastSearch || model == .haiku ? "web_search_20250305" : "web_search_20260209",
             "name": "web_search", "max_uses": 3,
-            "user_location": ["type": "approximate", "city": "Konya", "country": "TR", "timezone": "Europe/Istanbul"],
+            "user_location": ["type": "approximate", "city": Settings.cityName, "timezone": TimeZone.current.identifier],
         ]
         func schema(_ props: [String: Any], required: [String]) -> [String: Any] {
             ["type": "object", "properties": props, "required": required, "additionalProperties": false]

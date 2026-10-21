@@ -2,14 +2,21 @@ import Foundation
 
 /// Speaks through `say`. Killable at any moment (hotkey stop).
 public final class Speaker {
-    public let voice: String
+    /// Changeable at any time (Settings); the next line spoken uses it.
+    public var voice: String { get { lock.lock(); defer { lock.unlock() }; return _voice } set { lock.lock(); _voice = newValue; lock.unlock() } }
+    public var rate: Int? { get { lock.lock(); defer { lock.unlock() }; return _rate } set { lock.lock(); _rate = newValue; lock.unlock() } }
+    private var _voice: String
+    private var _rate: Int?
     var process: Process?
     let lock = NSLock()
     public var onSpeakingChanged: ((Bool) -> Void)?
 
     public init() {
-        voice = Self.pickVoice(installed: Self.voices(Self.run("/usr/bin/say", ["-v", "?"])), chosen: State.get("voice"))
+        _voice = Self.pickVoice(installed: Self.installed(), chosen: Settings.voice)
+        _rate = Settings.rate
     }
+
+    public static func installed() -> [(name: String, locale: String)] { voices(run("/usr/bin/say", ["-v", "?"])) }
 
     /// Installed voices as (name, locale), from `say -v ?`.
     public static func voices(_ list: String) -> [(name: String, locale: String)] {
@@ -74,7 +81,7 @@ public final class Speaker {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/bin/say")
-            p.arguments = ["-v", voice, "--", t]
+            p.arguments = ["-v", voice] + (rate.map { ["-r", String($0)] } ?? []) + ["--", t]
             p.terminationHandler = { [weak self] _ in
                 self?.lock.lock(); self?.process = nil; self?.lock.unlock()
                 self?.onSpeakingChanged?(false)

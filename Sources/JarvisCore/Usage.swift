@@ -13,8 +13,8 @@ public struct UsageRecord: Codable, Equatable {
 }
 
 public final class UsageTracker {
-    public static let cap = 80.0
-    public static let warnAt = 0.9 * 80.0
+    public static var cap: Double { Settings.cap }
+    public static var warnAt: Double { 0.9 * cap }
     public static let searchCost = 0.01   // $10 per 1,000 searches
 
     let url: URL

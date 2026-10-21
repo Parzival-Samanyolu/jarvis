@@ -15,6 +15,9 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 | 10 Notes, morning greeting | Written. Notes ordering unit-tested; live run waits on the Automation permission (see below). |
 | 11 Menu bar, mute, bundle, LaunchAgent | Done. App launches and stays up, with and without an enrolled voiceprint. LaunchAgent installed and running. App icon in `assets/` (redraw with `swift scripts/make-icon.swift`). |
 
+## Settings (2026-10-21)
+Settings… (⌘,) in the menu bar, or `jarvis --settings`. Saved in `state.json`, applied immediately. General: voice + sample, speaking speed, jokes (every reply / every other / rarely / never), opening line, shutdown line, daily briefing, wake word, follow-up listening, home city, start at login (`launchctl enable/disable`). Brain & Usage: model, fast/cheaper web search, monthly cap, this month by model. Memory: learned facts, delete one or all. Clicking through the controls has not been tested by hand; the General tab was checked by screenshot.
+
 ## Not verified (needs a person at the Mac)
 1. **Microphone path.** `Recorder`, `WakeListener` and the VAD thresholds have never run on a real mic. Grant Microphone permission, then check the end-of-speech timing and wake-word sensitivity (`WakeWordDetector.threshold`, 0.5).
 2. **Voice recognition removed from the app** (2026-10-20, owner's call). The `Voiceprint` code and its tests remain in JarvisCore, unused by the app.
