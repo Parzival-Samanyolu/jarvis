@@ -80,6 +80,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         }
     }
 
+    /// Opening Mycroft.app while it's already running (Finder, Spotlight, Launchpad) shows Settings,
+    /// since a menu-bar app has no window of its own.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings(); return true
+    }
+
     // MARK: Menu bar
 
     func buildMenu() {
