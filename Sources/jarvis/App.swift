@@ -1,11 +1,12 @@
 import AppKit
 import Foundation
+import IOKit.pwr_mgt
 import JarvisCore
 
 enum JState: String { case idle, listening, thinking, speaking, muted, confirming
     var symbol: String {
         switch self {
-        case .idle: return "circle"
+        case .idle: return "butler"     // drawn by ButlerGlyph, not an SF Symbol
         case .listening: return "mic.fill"
         case .thinking: return "ellipsis.circle"
         case .speaking: return "speaker.wave.2.fill"
@@ -35,6 +36,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     var sessionTask: Task<Void, Never>?
     var confirmCont: CheckedContinuation<Bool, Never>?
     var greeting = false
+    var lines = LinePicker()
+    var lastOpening: Date?
+    var quitting = false
+    var boundedID = 0, speakingBounded = false
+    let sleepWatcher = SleepWatcher()
 
     // Confirming is called from the Brain's tool loop (off the main actor).
     nonisolated func confirm(_ description: String) async -> Bool { await askToProceed(description) }
@@ -51,14 +57,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             NSLog("Jarvis: could not register ⌥ Space (already taken?)")
         }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.maybeGreet() }
+            Task { @MainActor in await self?.opening() }
         }
+        sleepWatcher.onWillSleep = { [weak self] done in self?.goingToSleep(done) ?? done() }
+        sleepWatcher.start()
         Task {
             _ = await Recorder.requestPermission()
+            await opening()
             if Keychain.apiKey() == nil { await say("I have no API key, sir. Run jarvis, dash dash set key, in the terminal.") }
             else if !Transcriber.available { await say("I can't hear you yet, sir. Whisper is not installed. See the setup script.") }
             await checkBattery()
-            await maybeGreet()
             updateWake()
         }
     }
@@ -92,7 +100,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     func render() {
         guard statusItem != nil else { return }
-        let img = NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
+        let img = state == .idle ? ButlerGlyph.image : NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
         statusItem.button?.image = img
         statusItem.button?.title = " \(brain.mode.label)"
         statusLine.title = "Mycroft — \(state.label)"
@@ -207,13 +215,30 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         case .none: break
         }
         do {
-            var reply = try await brain.respond(to: text)
-            reply += await capNotice()
-            await say(reply)
-        } catch BrainError.offline { await say("I'm afraid I'm offline, sir."); return false }
-        catch BrainError.noKey { await say("I have no API key, sir."); return false }
-        catch { NSLog("Jarvis error: \(error)"); await say("Something went wrong on my end, sir."); return false }
+            _ = try await brain.respond(to: text, speech: liveSpeech())
+            let notice = await capNotice()
+            if !notice.isEmpty { speaker.enqueue(notice) }
+            await speaker.drain()
+            if state == .speaking { state = .thinking }
+        } catch {
+            if Task.isCancelled { return false }   // the hotkey stopped it; say nothing
+            await speaker.drain()
+            switch error {
+            case BrainError.offline: await say(Lines.offline)
+            case BrainError.noKey: await say("I have no API key, sir.")
+            default: NSLog("Jarvis error: \(error)"); await say(lines.error())
+            }
+            return false
+        }
         return !Task.isCancelled
+    }
+
+    /// Speaks each sentence as soon as it streams in, and shows the speaking state.
+    func liveSpeech() -> LiveSpeech {
+        LiveSpeech { [weak self] sentence in
+            self?.speaker.enqueue(sentence)
+            Task { @MainActor in if self?.state == .thinking { self?.state = .speaking } }
+        }
     }
 
     /// Spoken once per month at 90% and once at the cap.
@@ -221,11 +246,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         let month = String(ISO8601DateFormatter().string(from: Date()).prefix(7))
         if brain.usage.capReached(), State.get("capNotice") != month {
             State.set("capNotice", month)
-            return " Also, sir, you've reached your eighty dollar cap. I'll use Haiku only until the month resets."
+            return "Also, sir, you've reached your eighty dollar cap. I'll use Haiku only until the month resets."
         }
         if brain.usage.nearCap(), State.get("warnNotice") != month {
             State.set("warnNotice", month)
-            return " A word of caution, sir: you're nearing your eighty dollar cap."
+            return "A word of caution, sir: you're nearing your eighty dollar cap."
         }
         return ""
     }
@@ -263,30 +288,75 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         c.resume(returning: yes)
     }
 
-    // MARK: Morning greeting and Sunday review
+    // MARK: Opening line, daily briefing and Sunday review
 
-    func maybeGreet() async {
-        guard !greeting, sessionTask == nil, state == .idle, Keychain.apiKey() != nil else { return }
+    /// At every launch and unlock: a fixed opening line, then the briefing if it's the first one today.
+    func opening() async {
+        guard !greeting, !quitting, sessionTask == nil, state == .idle else { return }
+        if let t = lastOpening, Date().timeIntervalSince(t) < 60 { return }   // logging in fires launch and unlock together
+        lastOpening = Date()
+        greeting = true; defer { greeting = false; updateWake() }
+        await say(lines.opening())
+        await briefing()
+        if state != .muted { state = .idle }
+    }
+
+    func briefing() async {
+        guard Keychain.apiKey() != nil else { return }
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
         let today = f.string(from: Date())
         guard State.get("lastGreeting") != today else { return }
-        greeting = true; defer { greeting = false; updateWake() }
         let sunday = Calendar.current.component(.weekday, from: Date()) == 1
         state = .thinking
         let notes = Notes.recent(3)
         let prompt = """
-        It is the owner's first unlock of the day. Greet them with a short good morning in character, give today's weather in Konya (use web search; just conditions and temperature in Celsius), and mention their latest notes if there are any. Two or three sentences in total, no more.
+        It is the owner's first time at the Mac today, and you have just greeted them, so do not greet them again. Give today's weather in Konya (use web search; just conditions and temperature in Celsius), and mention their latest notes if there are any. Two sentences in total, no more.
 
         Latest notes (may be empty):
         \(notes)
         """
         do {
-            let text = try await brain.oneShot(prompt, model: .sonnet)
+            _ = try await brain.oneShot(prompt, model: .sonnet, speech: liveSpeech())
             State.set("lastGreeting", today)
-            await say(text)
+            await speaker.drain()
             if sunday { await weeklyReview() }
         } catch { state = .idle }   // offline or no key: stay quiet, try again at the next unlock
-        if state != .muted { state = .idle }
+    }
+
+    // MARK: Shutdown line (quit, logout, sleep)
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !quitting else { return .terminateNow }
+        quitting = true
+        resolveConfirm(false); cancelSession()
+        Task {
+            await speakBounded(lines.shutdown())
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    /// macOS holds sleep until `done` is called (it gives up after about 30 seconds).
+    func goingToSleep(_ done: @escaping () -> Void) {
+        guard !quitting, state != .muted else { done(); return }
+        resolveConfirm(false); cancelSession(); state = .idle
+        Task {
+            await speakBounded(lines.shutdown())
+            done()
+        }
+    }
+
+    /// Speaks, but never holds up quitting or sleeping for more than 10 seconds.
+    func speakBounded(_ text: String) async {
+        boundedID += 1
+        let id = boundedID
+        // The deadline clock pauses while asleep, so only stop if this same line is still playing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            if self?.boundedID == id, self?.speakingBounded == true { self?.speaker.stop() }
+        }
+        state = .speaking; speakingBounded = true
+        await speaker.speak(text)
+        speakingBounded = false; state = .idle
     }
 
     func weeklyReview() async {
@@ -305,4 +375,73 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         }
         await say("That's the lot, sir.")
     }
+}
+
+/// Tells the app before the Mac sleeps and lets it delay sleep until a line is spoken.
+@MainActor
+final class SleepWatcher {
+    // IOKit message codes (iokit_common_msg macros, which Swift can't import).
+    static let canSystemSleep: UInt32 = 0xE000_0270
+    static let systemWillSleep: UInt32 = 0xE000_0280
+
+    var onWillSleep: ((@escaping () -> Void) -> Void)?
+    private var root: io_connect_t = 0
+    private var port: IONotificationPortRef?
+    private var notifier: io_object_t = 0
+
+    func start() {
+        let me = Unmanaged.passUnretained(self).toOpaque()
+        root = IORegisterForSystemPower(me, &port, { refcon, _, type, arg in
+            guard let refcon else { return }
+            MainActor.assumeIsolated {   // the port is scheduled on the main queue below
+                Unmanaged<SleepWatcher>.fromOpaque(refcon).takeUnretainedValue().handle(type, arg)
+            }
+        }, &notifier)
+        guard root != 0, let port else { NSLog("Jarvis: could not register for sleep notifications"); return }
+        IONotificationPortSetDispatchQueue(port, .main)
+    }
+
+    private func handle(_ type: UInt32, _ arg: UnsafeMutableRawPointer?) {
+        let id = Int(bitPattern: arg), root = root
+        switch type {
+        case Self.canSystemSleep: IOAllowPowerChange(root, id)
+        case Self.systemWillSleep:
+            if let onWillSleep { onWillSleep { IOAllowPowerChange(root, id) } } else { IOAllowPowerChange(root, id) }
+        default: break
+        }
+    }
+}
+
+/// Menu-bar icon: a bowler hat, monocle and moustache, drawn as a template so it follows light and dark mode.
+enum ButlerGlyph {
+    static let image: NSImage = {
+        let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.black.set()
+            // Crown and brim of the bowler.
+            let crown = NSBezierPath()
+            crown.move(to: NSPoint(x: 4.6, y: 11.2))
+            crown.curve(to: NSPoint(x: 9, y: 17), controlPoint1: NSPoint(x: 4.4, y: 15), controlPoint2: NSPoint(x: 6.4, y: 17))
+            crown.curve(to: NSPoint(x: 13.4, y: 11.2), controlPoint1: NSPoint(x: 11.6, y: 17), controlPoint2: NSPoint(x: 13.6, y: 15))
+            crown.close(); crown.fill()
+            NSBezierPath(roundedRect: NSRect(x: 1.5, y: 10, width: 15, height: 2), xRadius: 1, yRadius: 1).fill()
+            // Plain eye on the left, monocle on the right.
+            NSBezierPath(ovalIn: NSRect(x: 4.9, y: 6.4, width: 2, height: 2)).fill()
+            let mono = NSBezierPath(ovalIn: NSRect(x: 9.4, y: 4.9, width: 5, height: 5)); mono.lineWidth = 1.3; mono.stroke()
+            NSBezierPath(ovalIn: NSRect(x: 11.1, y: 6.6, width: 1.6, height: 1.6)).fill()
+            // Handlebar moustache, mirrored about the centre.
+            for flip in [1.0, -1.0] {
+                let m = NSBezierPath()
+                m.move(to: NSPoint(x: 9, y: 3.6))
+                m.curve(to: NSPoint(x: 9 + 5.2 * flip, y: 2.6), controlPoint1: NSPoint(x: 9 + 1.8 * flip, y: 4.4), controlPoint2: NSPoint(x: 9 + 3.6 * flip, y: 2.4))
+                m.curve(to: NSPoint(x: 9 + 5.6 * flip, y: 4.6), controlPoint1: NSPoint(x: 9 + 6.4 * flip, y: 2.8), controlPoint2: NSPoint(x: 9 + 6.4 * flip, y: 4.0))
+                m.curve(to: NSPoint(x: 9 + 4.4 * flip, y: 1.4), controlPoint1: NSPoint(x: 9 + 6.4 * flip, y: 2.6), controlPoint2: NSPoint(x: 9 + 5.6 * flip, y: 1.4))
+                m.curve(to: NSPoint(x: 9, y: 2.4), controlPoint1: NSPoint(x: 9 + 2.8 * flip, y: 1.4), controlPoint2: NSPoint(x: 9 + 1.4 * flip, y: 2.0))
+                m.close(); m.fill()
+            }
+            return true
+        }
+        img.isTemplate = true
+        img.accessibilityDescription = "Mycroft Idle"
+        return img
+    }()
 }

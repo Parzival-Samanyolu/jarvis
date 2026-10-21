@@ -2,11 +2,24 @@ import Foundation
 
 public protocol Transport {
     func send(_ body: [String: Any], headers: [String: String]) async throws -> (status: Int, data: Data)
+    /// With status 200, hands each server-sent event to `onEvent`; otherwise returns the error body.
+    func stream(_ body: [String: Any], headers: [String: String], onEvent: ([String: Any]) throws -> Void) async throws -> (status: Int, data: Data)
+}
+
+public extension Transport {
+    /// Fallback for transports that can't stream: one request, replayed as events.
+    func stream(_ body: [String: Any], headers: [String: String], onEvent: ([String: Any]) throws -> Void) async throws -> (status: Int, data: Data) {
+        let (status, data) = try await send(body, headers: headers)
+        guard status == 200 else { return (status, data) }
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        for e in StreamAssembler.events(for: json) { try onEvent(e) }
+        return (status, Data())
+    }
 }
 
 public struct URLSessionTransport: Transport {
     public init() {}
-    public func send(_ body: [String: Any], headers: [String: String]) async throws -> (status: Int, data: Data) {
+    func request(_ body: [String: Any], headers: [String: String]) throws -> URLRequest {
         var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         req.httpMethod = "POST"
         req.timeoutInterval = 120
@@ -14,8 +27,43 @@ public struct URLSessionTransport: Transport {
         req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (d, r) = try await URLSession.shared.data(for: req)
+        return req
+    }
+    public func send(_ body: [String: Any], headers: [String: String]) async throws -> (status: Int, data: Data) {
+        let (d, r) = try await URLSession.shared.data(for: try request(body, headers: headers))
         return ((r as? HTTPURLResponse)?.statusCode ?? 0, d)
+    }
+    public func stream(_ body: [String: Any], headers: [String: String], onEvent: ([String: Any]) throws -> Void) async throws -> (status: Int, data: Data) {
+        var body = body; body["stream"] = true
+        let (bytes, r) = try await URLSession.shared.bytes(for: try request(body, headers: headers))
+        let status = (r as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else {
+            var d = Data(); for try await b in bytes { d.append(b) }
+            return (status, d)
+        }
+        for try await line in bytes.lines where line.hasPrefix("data:") {
+            if let e = try? JSONSerialization.jsonObject(with: Data(line.dropFirst(5).utf8)) as? [String: Any] { try onEvent(e) }
+        }
+        return (status, Data())
+    }
+}
+
+/// Speaks a reply while it streams in: whole sentences as they complete, plus a short line before a slow tool.
+public final class LiveSpeech {
+    let say: (String) -> Void
+    var splitter = SentenceSplitter()
+    public private(set) var spokeAnything = false
+    public init(_ say: @escaping (String) -> Void) { self.say = say }
+
+    func text(_ t: String) { for s in splitter.add(t) { speak(s) } }
+    func flush() { if let s = splitter.flush() { speak(s) } }
+    func speak(_ s: String) { spokeAnything = true; say(s) }
+    /// Before the first tool call of a request, if nothing has been said yet, say something.
+    func toolStarting(_ name: String) {
+        flush()
+        // Server tools (web search, and the code it runs to filter results) are lookups; the rest act on the Mac.
+        let onMac = ["run_command", "notes", "look_at_screen"].contains(name)
+        if !spokeAnything { speak((onMac ? Lines.working : Lines.searching).randomElement()!) }
     }
 }
 
@@ -50,23 +98,23 @@ public final class Brain {
     // MARK: Public API
 
     /// One spoken exchange: the user's words in, Jarvis's reply out. Updates short-term context.
-    public func respond(to text: String) async throws -> String {
+    public func respond(to text: String, speech: LiveSpeech? = nil) async throws -> String {
         conversation.expireIfIdle()
         runner.beginRequest()
         let model = Router.model(for: text, mode: mode, capReached: usage.capReached())
         var actions: [Conversation.Action] = []
         let reply = try await run(messages: conversation.messages() + [["role": "user", "content": text]], model: model,
-                                  deep: Router.deepThinking.contains(where: text.lowercased().contains), actions: &actions)
+                                  deep: Router.deepThinking.contains(where: text.lowercased().contains), actions: &actions, speech: speech)
         conversation.add(user: text, assistant: reply, actions: actions)
         logExchange(heard: text, reply: reply)
         return reply
     }
 
     /// A self-contained request (morning greeting): does not touch the conversation.
-    public func oneShot(_ prompt: String, model: Model = .haiku) async throws -> String {
+    public func oneShot(_ prompt: String, model: Model = .haiku, speech: LiveSpeech? = nil) async throws -> String {
         runner.beginRequest()
         var ignored: [Conversation.Action] = []
-        return try await run(messages: [["role": "user", "content": prompt]], model: usage.capReached() ? .haiku : model, deep: false, actions: &ignored)
+        return try await run(messages: [["role": "user", "content": prompt]], model: usage.capReached() ? .haiku : model, deep: false, actions: &ignored, speech: speech)
     }
 
     /// After a conversation, extract lasting facts with Haiku and append them to memory.
@@ -105,7 +153,8 @@ public final class Brain {
     struct Response { var content: [[String: Any]]; var stopReason: String; var model: Model }
 
     /// Runs the tool loop. Every client tool call is appended to `actions` (result shortened) for the history.
-    func run(messages initial: [[String: Any]], model: Model, deep: Bool, actions: inout [Conversation.Action]) async throws -> String {
+    /// With `speech`, the reply streams and is spoken as it arrives; everything returned has been spoken.
+    func run(messages initial: [[String: Any]], model: Model, deep: Bool, actions: inout [Conversation.Action], speech: LiveSpeech? = nil) async throws -> String {
         // The clock rides in a role:system message after the owner's words, so the cached system prompt and
         // tools stay byte-identical. Built once per request: thinking blocks from earlier tool rounds are
         // bound to the conversation as sent.
@@ -114,7 +163,7 @@ public final class Brain {
         let system = Prompts.system(memory: memory.text())
         for _ in 0..<Self.maxToolRounds {
             let body = requestBody(model: model, system: system, messages: msgs, deep: deep)
-            let resp = try await call(body, model: model)
+            let resp = try await call(body, model: model, speech: speech)
             msgs.append(["role": "assistant", "content": resp.content])
             switch resp.stopReason {
             case "tool_use":
@@ -128,14 +177,17 @@ public final class Brain {
             case "pause_turn":
                 continue
             case "refusal":
-                return "I'm afraid I can't help with that one, sir."
+                return Self.spoken("I'm afraid I can't help with that one, sir.", speech)
             default:
+                speech?.flush()
                 let t = Self.text(of: resp.content)
-                return t.isEmpty ? "Very good, sir." : t
+                return t.isEmpty ? Self.spoken("Very good, sir.", speech) : t
             }
         }
-        return "I seem to have got myself into a loop, sir. Shall we try that again?"
+        return Self.spoken("I seem to have got myself into a loop, sir. Shall we try that again?", speech)
     }
+
+    static func spoken(_ line: String, _ speech: LiveSpeech?) -> String { speech?.speak(line); return line }
 
     func requestBody(model: Model, system: String, messages: [[String: Any]], deep: Bool) -> [String: Any] {
         var body: [String: Any] = [
@@ -147,7 +199,8 @@ public final class Brain {
             "messages": messages,
             "tools": Self.cachedTools(for: model),
             "cache_control": ["type": "ephemeral"],
-            "output_config": ["effort": model == .haiku ? "low" : (deep ? "high" : "medium")],
+            // Low effort keeps spoken replies quick; "think hard" requests get high.
+            "output_config": ["effort": deep ? "high" : "low"],
         ]
         if useFallbacks && model != .haiku { body["fallbacks"] = "default" }
         return body
@@ -161,7 +214,9 @@ public final class Brain {
 
     static func tools(for model: Model) -> [[String: Any]] {
         let search: [String: Any] = [
-            "type": model == .haiku ? "web_search_20250305" : "web_search_20260209",
+            // The basic search, not web_search_20260209: its result filtering roughly doubled spoken answer
+            // times (weather 11s vs 6.5s, a sports result 16.6s vs 3.5s, measured 2026-10-21).
+            "type": "web_search_20250305",
             "name": "web_search", "max_uses": 3,
             "user_location": ["type": "approximate", "city": "Konya", "country": "TR", "timezone": "Europe/Istanbul"],
         ]
@@ -228,15 +283,28 @@ public final class Brain {
 
     // MARK: HTTP
 
-    func call(_ body: [String: Any], model: Model) async throws -> Response {
+    func call(_ body: [String: Any], model: Model, speech: LiveSpeech? = nil) async throws -> Response {
         guard let key = apiKey(), !key.isEmpty else { throw BrainError.noKey }
         var body = body
         for attempt in 0..<3 {
             var headers = ["x-api-key": key]
             if body["fallbacks"] != nil { headers["anthropic-beta"] = "server-side-fallback-2026-07-01" }
             let status: Int, data: Data
-            do { (status, data) = try await transport.send(body, headers: headers) }
+            var asm = StreamAssembler()
+            if let speech {
+                asm.onText = { speech.text($0) }
+                asm.onToolStart = { speech.toolStarting($0) }
+            }
+            do {
+                if speech != nil { (status, data) = try await transport.stream(body, headers: headers) { try asm.handle($0) } }
+                else { (status, data) = try await transport.send(body, headers: headers) }
+            }
             catch let e as URLError where Self.offlineCodes.contains(e.code) { throw BrainError.offline }
+            if status == 200, speech != nil {
+                let used = asm.model.flatMap(Self.model(named:)) ?? model
+                usage.record(model: used, usage: asm.usage)
+                return Response(content: asm.content, stopReason: asm.stopReason, model: used)
+            }
             let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
             if status == 200 {
                 let used = (json["model"] as? String).flatMap(Self.model(named:)) ?? model

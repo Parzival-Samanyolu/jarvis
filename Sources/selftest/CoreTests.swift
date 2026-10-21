@@ -264,7 +264,7 @@ func runAudioTests() {
     // silence only -> times out with no speech
     var d = EndpointDetector(startTimeout: 3)
     expectEqual(drive(&d, rms: 0.004, ms: 3500), .done(hadSpeech: false))
-    // quiet room, speech, then silence -> ends after ~0.9s of silence
+    // quiet room, speech, then silence -> ends after ~0.75s of silence
     d = EndpointDetector(startTimeout: 5)
     expectEqual(drive(&d, rms: 0.004, ms: 500), .waiting)
     expectEqual(drive(&d, rms: 0.08, ms: 1000), .speaking)

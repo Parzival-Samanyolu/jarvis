@@ -7,7 +7,7 @@ public struct EndpointDetector {
     public static let frameMs = 20
     public var startTimeout: TimeInterval
     public var maxDuration: TimeInterval = 20
-    public var endSilence: TimeInterval = 0.9
+    public var endSilence: TimeInterval = 0.75
     public var minSpeech: TimeInterval = 0.18
     public var calibration: TimeInterval = 0.3
 

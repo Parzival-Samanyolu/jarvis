@@ -22,10 +22,34 @@ public final class Speaker {
 
     public var isSpeaking: Bool { lock.lock(); defer { lock.unlock() }; return process?.isRunning ?? false }
 
-    /// Speaks and returns when finished or stopped.
-    public func speak(_ text: String) async {
+    /// Lines play one after another, in the order queued. `stop()` drops everything queued.
+    var tail: Task<Void, Never>?
+    var generation = 0
+
+    /// Queues a line and returns at once. Safe from any thread.
+    public func enqueue(_ text: String) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
+        lock.lock()
+        let prev = tail, gen = generation
+        tail = Task { [weak self] in
+            await prev?.value
+            guard let self, self.current(gen) else { return }
+            await self.play(t)
+        }
+        lock.unlock()
+    }
+
+    /// Waits until everything queued so far has been spoken (or stopped).
+    public func drain() async { await currentTail()?.value }
+    func currentTail() -> Task<Void, Never>? { lock.lock(); defer { lock.unlock() }; return tail }
+
+    /// Speaks after anything already queued and returns when finished or stopped.
+    public func speak(_ text: String) async { enqueue(text); await drain() }
+
+    func current(_ gen: Int) -> Bool { lock.lock(); defer { lock.unlock() }; return gen == generation }
+
+    func play(_ t: String) async {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/bin/say")
@@ -41,7 +65,7 @@ public final class Speaker {
     }
 
     public func stop() {
-        lock.lock(); let p = process; lock.unlock()
+        lock.lock(); generation += 1; let p = process; lock.unlock()
         if let p, p.isRunning { p.terminate() }
     }
 }

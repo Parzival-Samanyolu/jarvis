@@ -27,9 +27,14 @@ func runCLI() async {
         default: break
         }
         do {
-            let reply = try await brain.respond(to: line)
-            print("Mycroft [\(brain.lastModel?.label ?? "?")]: \(reply)")
-            if let speaker { await speaker.speak(reply) }
+            let start = Date()
+            let live = LiveSpeech { s in
+                print(String(format: "  [%.1fs] %@", Date().timeIntervalSince(start), s))
+                speaker?.enqueue(s)
+            }
+            _ = try await brain.respond(to: line, speech: live)
+            print(String(format: "Mycroft [%@] finished in %.1fs", brain.lastModel?.label ?? "?", Date().timeIntervalSince(start)))
+            await speaker?.drain()
         } catch BrainError.offline { print("I'm afraid I'm offline, sir.") }
         catch { print("Error: \(error)") }
     }
