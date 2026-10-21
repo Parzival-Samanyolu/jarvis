@@ -1,6 +1,6 @@
 import Foundation
 
-/// Notes app integration through AppleScript, in a "Jarvis" folder.
+/// Notes app integration through AppleScript, in a "Mycroft" folder.
 public enum Notes {
     static func esc(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
@@ -17,9 +17,16 @@ public enum Notes {
         return (p.terminationStatus == 0, out)
     }
 
+    /// Creates the folder; one that is still called "Jarvis" (the name before the rename) is renamed, notes and all.
     static let ensureFolder = """
     tell application "Notes"
-      if not (exists folder "Jarvis") then make new folder with properties {name:"Jarvis"}
+      if not (exists folder "Mycroft") then
+        if exists folder "Mycroft" then
+          set name of folder "Mycroft" to "Mycroft"
+        else
+          make new folder with properties {name:"Mycroft"}
+        end if
+      end if
     end tell
     """
 
@@ -28,7 +35,7 @@ public enum Notes {
         return ensureFolder + """
 
         tell application "Notes"
-          tell folder "Jarvis"
+          tell folder "Mycroft"
             make new note with properties {name:"\(esc(title))", body:"\(esc(text))"}
           end tell
         end tell
@@ -51,7 +58,7 @@ public enum Notes {
         tell application "Notes"
           set out to ""
           set now to current date
-          repeat with nt in (notes of folder "Jarvis")
+          repeat with nt in (notes of folder "Mycroft")
             set out to out & ((now - (modification date of nt)) as integer) & (character id 31) & (plaintext of nt) & (character id 30)
           end repeat
           return out
@@ -79,7 +86,7 @@ public enum Notes {
 
         tell application "Notes"
           set out to ""
-          repeat with nt in (notes of folder "Jarvis")
+          repeat with nt in (notes of folder "Mycroft")
             set t to plaintext of nt
             if t contains "\(esc(query))" then set out to out & t & "\\n---\\n"
           end repeat

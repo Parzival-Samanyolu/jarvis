@@ -3,7 +3,7 @@ import Foundation
 
 public struct OnnxError: Error, CustomStringConvertible { public var description: String }
 
-/// Single-input, single-output float ONNX model (all models Jarvis uses fit this).
+/// Single-input, single-output float ONNX model (all models Mycroft uses fit this).
 public final class OnnxModel {
     let handle: OpaquePointer
 

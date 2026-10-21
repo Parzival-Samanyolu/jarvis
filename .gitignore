@@ -10,4 +10,4 @@ voiceprint.*
 models/
 .env
 *.key
-jarvis.log
+mycroft.log

@@ -14,7 +14,7 @@ struct OrtShimModel {
 static const OrtApi *api(void) { return OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 static OrtEnv *env_singleton(void) {
     static OrtEnv *env = NULL;
-    if (!env) api()->CreateEnv(ORT_LOGGING_LEVEL_ERROR, "jarvis", &env);
+    if (!env) api()->CreateEnv(ORT_LOGGING_LEVEL_ERROR, "mycroft", &env);
     return env;
 }
 

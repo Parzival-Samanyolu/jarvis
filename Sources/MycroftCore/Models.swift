@@ -38,7 +38,7 @@ public enum Router {
     }
 }
 
-/// Things the user says that Jarvis handles locally, without a model call.
+/// Things the user says that Mycroft handles locally, without a model call.
 public enum Intent: Equatable {
     case mute
     case stop
@@ -51,8 +51,8 @@ public enum Intent: Equatable {
     public static func parse(_ raw: String) -> Intent {
         var t = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         t = t.trimmingCharacters(in: CharacterSet(charactersIn: ".!?,"))
-        // The name in front ("Mycroft, mute"); "jarvis" was the name before the rename.
-        for name in ["mycroft", "jarvis"] {
+        // The name in front ("Mycroft, mute").
+        for name in ["mycroft"] {
             if t.hasPrefix(name + ",") { t = String(t.dropFirst(name.count + 1)).trimmingCharacters(in: .whitespaces) }
             else if t.hasPrefix(name + " ") { t = String(t.dropFirst(name.count + 1)) }
         }

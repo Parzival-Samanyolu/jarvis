@@ -1,5 +1,5 @@
 import Foundation
-@testable import JarvisCore
+@testable import MycroftCore
 
 func runLinesTests() {
     let cal = Calendar(identifier: .gregorian)
@@ -152,4 +152,32 @@ func runVoiceTests() {
     expectEqual(Speaker.pickVoice(installed: v, chosen: "Grandpa (English (UK))"), "Grandpa (English (UK))")
     expectEqual(Speaker.pickVoice(installed: v, chosen: "Not Installed"), "Jamie (Premium)")
     expectEqual(Speaker.pickVoice(installed: Array(v.prefix(2)), chosen: nil), "Daniel (English (UK))")
+    expectEqual(Speaker.avRate(185), 0.5); expectEqual(Speaker.avRate(100), 0.42); expectEqual(Speaker.avRate(400), 0.59)
+    expect(Speaker.avRate(200) > 0.5 && Speaker.avRate(200) < 0.545)
+}
+
+/// Real synthesizer, muted: sentences follow each other without the old per-line start-up gap, and stop() ends at once.
+func runSpeakerTests() async {
+    let installed = Speaker.installed()
+    if let daniel = installed.first(where: { $0.name.hasPrefix("Daniel (") }) { expectEqual(Speaker.avVoice(daniel.name)?.name, "Daniel") }
+    if installed.contains(where: { $0.name == "Arthur (Enhanced)" }) { expectEqual(Speaker.avVoice("Arthur (Enhanced)")?.name, "Arthur (Enhanced)") }
+    let s = Speaker(); s.muted = true
+    var starts: [Date] = [], ends: [Date] = []
+    s.onSpeakingChanged = { if $0 { starts.append(Date()) } else { ends.append(Date()) } }
+    await s.speak("Warming up.")
+    starts = []
+    let t0 = Date()
+    for line in ["Good evening, sir.", "The weather is twelve degrees.", "Shall I put the kettle on?"] { s.enqueue(line) }
+    expect(s.isSpeaking)
+    await s.drain()
+    let total = Date().timeIntervalSince(t0)
+    expectEqual(starts.count, 3)
+    let gaps = zip(starts, starts.dropFirst()).map { $1.timeIntervalSince($0) }
+    print(String(format: "speaker: 3 lines in %.2fs, starts %@", total, gaps.map { String(format: "+%.2f", $0) }.joined(separator: " ")))
+    expect(!s.isSpeaking)
+    s.enqueue("This is a long sentence that should be cut off well before it finishes speaking, sir.")
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    let t1 = Date(); s.stop(); await s.drain()
+    expect(Date().timeIntervalSince(t1) < 0.2, "stop() drains at once")
+    expect(!s.isSpeaking)
 }

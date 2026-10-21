@@ -1,5 +1,5 @@
 import Foundation
-@testable import JarvisCore
+@testable import MycroftCore
 
 let checker = SafetyChecker(home: "/Users/test", exists: { ["/Users/test/a.txt", "/Users/test/docs"].contains($0) })
 

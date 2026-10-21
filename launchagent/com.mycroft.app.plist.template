@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>com.jarvis.app</string>
-  <key>ProgramArguments</key><array><string>__APP__/Contents/MacOS/jarvis</string></array>
+  <key>Label</key><string>com.mycroft.app</string>
+  <key>ProgramArguments</key><array><string>__APP__/Contents/MacOS/mycroft</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ProcessType</key><string>Interactive</string>
-  <key>StandardErrorPath</key><string>__LOGS__/jarvis.log</string>
+  <key>StandardErrorPath</key><string>__LOGS__/mycroft.log</string>
 </dict></plist>

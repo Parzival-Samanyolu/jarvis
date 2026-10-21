@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import IOKit.pwr_mgt
-import JarvisCore
+import MycroftCore
 
 enum JState: String { case idle, listening, thinking, speaking, muted, confirming
     var symbol: String {
@@ -47,7 +47,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     func applicationDidFinishLaunching(_ n: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        NSLog("Jarvis: voice is %@", speaker.voice)
+        NSLog("Mycroft: voice is %@", speaker.voice)
         brain = Brain(runner: CommandRunner(confirmer: self))
         brain.conversationLog = Paths.conversationLog
         if let raw = State.get("mode"), let m = Mode(rawValue: raw) { brain.mode = m }
@@ -55,13 +55,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         buildMenu()
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in Task { @MainActor in await self?.checkBattery() } }
         if !hotkey.register({ [weak self] in self?.hotkeyPressed() }) {
-            NSLog("Jarvis: could not register ⌥ Space (already taken?)")
+            NSLog("Mycroft: could not register ⌥ Space (already taken?)")
         }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.opening() }
         }
-        // `jarvis --settings` (or this notification) opens the Settings window in the running app.
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.jarvis.openSettings"), object: nil, queue: .main) { [weak self] _ in
+        // `mycroft --settings` (or this notification) opens the Settings window in the running app.
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.mycroft.openSettings"), object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.openSettings() }
         }
         Connectivity.shared.onChange = { [weak self] _ in Task { @MainActor in self?.render() } }
@@ -73,7 +73,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             _ = await Recorder.requestPermission()
             await opening()
             await sttReady.value
-            if Keychain.apiKey() == nil { await say("I have no API key, sir. Run jarvis, dash dash set key, in the terminal.") }
+            if Keychain.apiKey() == nil { await say("I have no API key, sir. Run mycroft, dash dash set key, in the terminal.") }
             else if !transcriber.available { await say("I can't hear you yet, sir. Speech recognition isn't available. See the setup script.") }
             await checkBattery()
             updateWake()
@@ -176,7 +176,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         return state == .muted ? "Wake word: muted" : "Wake word: \"\(Models.wakePhrase)\" is on"
     }
 
-    /// The wake listener runs only when Jarvis is idle and the battery is fine.
+    /// The wake listener runs only when Mycroft is idle and the battery is fine.
     func updateWake() {
         guard let wake else { return }
         let should = Settings.wakeWord && state == .idle && sessionTask == nil && !greeting && !batteryPolicy.paused
@@ -256,7 +256,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             switch error {
             case BrainError.offline: await answerOffline(text); return true
             case BrainError.noKey: await say("I have no API key, sir.")
-            default: NSLog("Jarvis error: \(error)"); await say(lines.error())
+            default: NSLog("Mycroft error: \(error)"); await say(lines.error())
             }
             return false
         }
@@ -432,7 +432,7 @@ final class SleepWatcher {
                 Unmanaged<SleepWatcher>.fromOpaque(refcon).takeUnretainedValue().handle(type, arg)
             }
         }, &notifier)
-        guard root != 0, let port else { NSLog("Jarvis: could not register for sleep notifications"); return }
+        guard root != 0, let port else { NSLog("Mycroft: could not register for sleep notifications"); return }
         IONotificationPortSetDispatchQueue(port, .main)
     }
 

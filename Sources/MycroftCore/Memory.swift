@@ -139,5 +139,5 @@ public final class Conversation {
             return m
         }
     }
-    public var transcript: String { exchanges.map { "User: \($0.user)\nJarvis: \($0.assistant)" }.joined(separator: "\n") }
+    public var transcript: String { exchanges.map { "User: \($0.user)\nMycroft: \($0.assistant)" }.joined(separator: "\n") }
 }

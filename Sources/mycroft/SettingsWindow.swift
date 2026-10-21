@@ -1,5 +1,5 @@
 import AppKit
-import JarvisCore
+import MycroftCore
 import SwiftUI
 
 /// Settings… (⌘,): every change is saved to state.json and applied at once.
@@ -32,6 +32,7 @@ final class SettingsModel: ObservableObject {
     @Published var rate: Double { didSet { applyRate() } }
     @Published var humour: Humour { didSet { Settings.humour = humour } }
     @Published var followUp: Bool { didSet { Settings.followUp = followUp } }
+    @Published var endSilence: Double { didSet { Settings.endSilence = endSilence } }
     @Published var openingLine: Bool { didSet { Settings.openingLine = openingLine } }
     @Published var shutdownLine: Bool { didSet { Settings.shutdownLine = shutdownLine } }
     @Published var briefing: Bool { didSet { Settings.briefing = briefing } }
@@ -56,6 +57,7 @@ final class SettingsModel: ObservableObject {
         rate = Double(Settings.rate ?? 185)
         humour = Settings.humour
         followUp = Settings.followUp
+        endSilence = Settings.endSilence
         openingLine = Settings.openingLine
         shutdownLine = Settings.shutdownLine
         briefing = Settings.briefing
@@ -135,6 +137,8 @@ struct SettingsView: View {
             Section("Listening") {
                 Toggle("Wake word (\"Hey Mycroft\")", isOn: $model.wakeWord)
                 Toggle("Keep listening for a follow-up after each reply", isOn: $model.followUp)
+                Slider(value: $model.endSilence, in: 0.5...3, step: 0.25) { Text("Wait after you stop talking") }
+                Text(String(format: "%g seconds of silence ends what you say", model.endSilence)).font(.caption).foregroundStyle(.secondary)
             }
             Section("Home and startup") {
                 HStack {
@@ -214,7 +218,7 @@ struct SettingsView: View {
 
 /// Start at login is the LaunchAgent the installer sets up; switching it off disables it without stopping Mycroft now.
 enum LoginItem {
-    static let label = "com.jarvis.app"
+    static let label = "com.mycroft.app"
     static var plistExists: Bool {
         FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist")
     }

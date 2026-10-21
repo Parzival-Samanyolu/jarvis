@@ -11,7 +11,7 @@ public enum OfflineAction: Equatable {
     /// Recognises the simple requests Mycroft handles itself when Claude can't be reached.
     public static func parse(_ raw: String) -> OfflineAction? {
         var t = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?")))
-        for name in ["mycroft", "jarvis"] where t.hasPrefix(name) {
+        for name in ["mycroft"] where t.hasPrefix(name) {
             t = String(t.dropFirst(name.count)).trimmingCharacters(in: CharacterSet(charactersIn: ", ").union(.whitespaces))
         }
         for p in ["please ", "can you ", "could you "] where t.hasPrefix(p) { t = String(t.dropFirst(p.count)) }
@@ -89,6 +89,6 @@ public final class Connectivity: @unchecked Sendable {
             self.lock.lock(); let changed = now != self.online; self.online = now; self.lock.unlock()
             if changed { self.onChange?(now) }
         }
-        monitor.start(queue: DispatchQueue(label: "jarvis.network"))
+        monitor.start(queue: DispatchQueue(label: "mycroft.network"))
     }
 }

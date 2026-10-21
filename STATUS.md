@@ -16,17 +16,17 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 | 11 Menu bar, mute, bundle, LaunchAgent | Done. App launches and stays up, with and without an enrolled voiceprint. LaunchAgent installed and running. App icon in `assets/` (redraw with `swift scripts/make-icon.swift`). |
 
 ## Settings (2026-10-21)
-Settings… (⌘,) in the menu bar, or `jarvis --settings`. Saved in `state.json`, applied immediately. General: voice + sample, speaking speed, jokes (every reply / every other / rarely / never), opening line, shutdown line, daily briefing, wake word, follow-up listening, home city, start at login (`launchctl enable/disable`). Brain & Usage: model, fast/cheaper web search, monthly cap, this month by model. Memory: learned facts, delete one or all. Clicking through the controls has not been tested by hand; the General tab was checked by screenshot.
+Settings… (⌘,) in the menu bar, or `mycroft --settings`. Saved in `state.json`, applied immediately. General: voice + sample, speaking speed, jokes (every reply / every other / rarely / never), opening line, shutdown line, daily briefing, wake word, follow-up listening, home city, start at login (`launchctl enable/disable`). Brain & Usage: model, fast/cheaper web search, monthly cap, this month by model. Memory: learned facts, delete one or all. Clicking through the controls has not been tested by hand; the General tab was checked by screenshot.
 
 ## Not verified (needs a person at the Mac)
 1. **Microphone path.** `Recorder`, `WakeListener` and the VAD thresholds have never run on a real mic. Grant Microphone permission, then check the end-of-speech timing and wake-word sensitivity (`WakeWordDetector.threshold`, 0.5).
-2. **Voice recognition removed from the app** (2026-10-20, owner's call). The `Voiceprint` code and its tests remain in JarvisCore, unused by the app.
+2. **Voice recognition removed from the app** (2026-10-20, owner's call). The `Voiceprint` code and its tests remain in MycroftCore, unused by the app.
 3. **Permissions:** Microphone, Screen Recording (for `look_at_screen`), Automation (Notes), and Accessibility only if Mac-control commands need it. Ad-hoc signing means grants may reset after a rebuild.
-4. **Notes** (`Notes.swift`): first run creates the "Jarvis" folder. A test run timed out waiting for the Automation prompt ("allow control of Notes"); click Allow on first use. "Latest notes" now sorts by modification date.
+4. **Notes** (`Notes.swift`): first run creates the "Mycroft" folder (an existing "Jarvis" folder is renamed, notes kept). A test run timed out waiting for the Automation prompt ("allow control of Notes"); click Allow on first use. "Latest notes" now sorts by modification date.
 5. **Opening line** fires on launch and on `com.apple.screenIsUnlocked` (at most once a minute). Not yet seen to fire after a real unlock. **Shutdown line before sleep** has not been heard on a real lid close.
-6. **"Stop" by voice while Jarvis speaks** was removed with the voiceprint (Jarvis would hear itself). Press ⌥ Space to stop it.
+6. **"Stop" by voice while Mycroft speaks** was removed with the voiceprint (Mycroft would hear itself). Press ⌥ Space to stop it.
 7. **Wake word pre-roll:** recording starts after the wake word fires, so a request spoken in the same breath may lose its first syllable. Add a ring buffer if that happens.
-8. **Screen capture** (`screencapture -x` + resize) runs and resizes to 1568 px, but the image is black until Screen Recording is granted to Jarvis.
+8. **Screen capture** (`screencapture -x` + resize) runs and resizes to 1568 px, but the image is black until Screen Recording is granted to Mycroft.
 
 ## Decisions and deviations
 - **Swift, not Python** (user request). Replacements: Carbon hotkey, energy VAD, whisper.cpp CLI, openWakeWord and Wespeaker on onnxruntime, `URLSession` for the API (no Swift SDK exists).

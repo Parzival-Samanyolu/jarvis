@@ -2,13 +2,13 @@ import Foundation
 import Security
 
 public enum Paths {
-    static var override: URL? { ProcessInfo.processInfo.environment["JARVIS_HOME"].map { URL(fileURLWithPath: $0) } }
+    static var override: URL? { ProcessInfo.processInfo.environment["MYCROFT_HOME"].map { URL(fileURLWithPath: $0) } }
     static var library: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library") }
 
-    /// Data directory: ~/Library/Application Support/Jarvis. `JARVIS_HOME` puts data and logs in one folder instead.
-    public static var dir: URL { override ?? library.appendingPathComponent("Application Support/Jarvis") }
-    /// Log directory: ~/Library/Logs/Jarvis (shows up in Console.app).
-    public static var logs: URL { override ?? library.appendingPathComponent("Logs/Jarvis") }
+    /// Data directory: ~/Library/Application Support/Mycroft. `MYCROFT_HOME` puts data and logs in one folder instead.
+    public static var dir: URL { override ?? library.appendingPathComponent("Application Support/Mycroft") }
+    /// Log directory: ~/Library/Logs/Mycroft (shows up in Console.app).
+    public static var logs: URL { override ?? library.appendingPathComponent("Logs/Mycroft") }
     public static var memory: URL { dir.appendingPathComponent("memory.md") }
     public static var usage: URL { dir.appendingPathComponent("usage.jsonl") }
     public static var commandLog: URL { logs.appendingPathComponent("commands.log") }
@@ -18,11 +18,23 @@ public enum Paths {
 }
 
 public enum Keychain {
-    static let service = "jarvis"
+    static let service = "mycroft"
+    /// Where the key was kept before the rename; moved to `service` the first time it is read.
+    static let oldService = "jarvis"
     static let account = "anthropic-api-key"
 
     public static func apiKey() -> String? {
         if let k = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"], !k.isEmpty { return k }
+        if let k = read(service) { return k }
+        guard let k = read(oldService) else { return nil }
+        if setAPIKey(k) {
+            SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: oldService,
+                           kSecAttrAccount as String: account] as CFDictionary)
+        }
+        return k
+    }
+
+    static func read(_ service: String) -> String? {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                 kSecAttrService as String: service,
                                 kSecAttrAccount as String: account,

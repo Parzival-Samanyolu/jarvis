@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import JarvisCore
+import MycroftCore
 
 /// Converts mic buffers to 16 kHz mono floats.
 final class Resampler {
@@ -58,7 +58,7 @@ final class Recorder {
             final class State {
                 var detector: EndpointDetector; var samples: [Float] = []; var frame: [Float] = []; var done = false
                 var engine: AVAudioEngine?; var observer: NSObjectProtocol?; var restarts = 0
-                init(_ t: TimeInterval) { detector = EndpointDetector(startTimeout: t) }
+                init(_ t: TimeInterval) { detector = EndpointDetector(startTimeout: t); detector.endSilence = Settings.endSilence }
             }
             let st = State(startTimeout)
             let frameLen = 16000 * EndpointDetector.frameMs / 1000
@@ -76,7 +76,7 @@ final class Recorder {
                     self.lock.withLock { self.onCancel = nil }
                     teardown()
                     guard hadSpeech, !self.cancelled else { cont.resume(returning: nil); return }
-                    let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("jarvis-\(UUID().uuidString).wav")
+                    let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("mycroft-\(UUID().uuidString).wav")
                     do { try WAV.encode(st.samples).write(to: url); cont.resume(returning: url) } catch { cont.resume(returning: nil) }
                 }
             }
@@ -109,13 +109,13 @@ final class Recorder {
                     guard !st.done else { return }
                     teardown()
                     st.restarts += 1
-                    NSLog("Jarvis: mic changed during recording, reopening (%d)", st.restarts)
+                    NSLog("Mycroft: mic changed during recording, reopening (%d)", st.restarts)
                     guard st.restarts <= 5 else { finish(hadSpeech: false); return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { if !st.done { open() } }
                 }
                 st.engine = engine
                 do { engine.prepare(); try engine.start() } catch {
-                    NSLog("Jarvis: mic failed to start: %@", "\(error)")
+                    NSLog("Mycroft: mic failed to start: %@", "\(error)")
                     finish(hadSpeech: false)
                 }
             }
@@ -127,12 +127,12 @@ final class Recorder {
     }
 }
 
-/// Always-on "Hey Jarvis" listener. Runs only while Jarvis is idle (see AppController.updateWake).
+/// Always-on "Hey Mycroft" listener. Runs only while Mycroft is idle (see AppController.updateWake).
 /// Rebuilds its engine on each start, so it follows the current input device.
 final class WakeListener {
     private var engine: AVAudioEngine?
     private var observer: NSObjectProtocol?
-    private let queue = DispatchQueue(label: "jarvis.wake")
+    private let queue = DispatchQueue(label: "mycroft.wake")
     private let detector: WakeWordDetector
     private(set) var running = false
     var onWake: (() -> Void)?
@@ -161,7 +161,7 @@ final class WakeListener {
         running = true
         observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
             guard let self, self.running else { return }
-            NSLog("Jarvis: audio device changed; restarting wake listener")
+            NSLog("Mycroft: audio device changed; restarting wake listener")
             self.stop()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.onDeviceChange?() }
         }
@@ -189,7 +189,7 @@ final class Transcriber {
 
     func prepare() async {
         if #available(macOS 26, *) { appleLocale = await LiveTranscriber.prepare() }
-        NSLog("Jarvis: speech-to-text is %@", appleLocale.map { "Apple (\($0.identifier))" } ?? (Self.whisperAvailable ? "Whisper" : "missing"))
+        NSLog("Mycroft: speech-to-text is %@", appleLocale.map { "Apple (\($0.identifier))" } ?? (Self.whisperAvailable ? "Whisper" : "missing"))
     }
 
     /// A live session to feed while recording, or nil to use Whisper on the finished recording.
@@ -206,7 +206,7 @@ final class Transcriber {
             do {
                 let text = Speech.clean(try await live.finish())
                 if !text.isEmpty { return text }
-            } catch { NSLog("Jarvis: Apple transcription failed: %@", "\(error)") }
+            } catch { NSLog("Mycroft: Apple transcription failed: %@", "\(error)") }
         }
         return await Self.whisper(wav)
     }

@@ -41,7 +41,7 @@ public final class LiveTranscriber: @unchecked Sendable {
             do {
                 try await AssetInventory.assetInstallationRequest(supporting: [SpeechTranscriber(locale: locale, preset: .transcription)])?.downloadAndInstall()
             } catch {
-                NSLog("Jarvis: speech model download failed: %@", "\(error)")
+                NSLog("Mycroft: speech model download failed: %@", "\(error)")
                 return nil
             }
         }

@@ -89,7 +89,7 @@ public final class CommandRunner {
 public enum Screen {
     /// Silent screenshot, resized so the long side is <= 1568px, returned as base64 PNG.
     public static func capture() async -> String? {
-        let raw = NSTemporaryDirectory() + "jarvis-screen-\(UUID().uuidString).png"
+        let raw = NSTemporaryDirectory() + "mycroft-screen-\(UUID().uuidString).png"
         defer { try? FileManager.default.removeItem(atPath: raw) }
         let r = await CommandRunner.execute("/usr/sbin/screencapture -x -t png '\(raw)' && /usr/bin/sips -Z 1568 '\(raw)' >/dev/null 2>&1", timeout: 15)
         guard r.exitCode == 0, let d = FileManager.default.contents(atPath: raw), d.count > 1000 else { return nil }

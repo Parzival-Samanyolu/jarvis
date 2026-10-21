@@ -39,6 +39,11 @@ public enum Settings {
     public static var wakeWord: Bool { get { bool("wakeWord", true) } set { setBool("wakeWord", newValue) } }
     /// Fast search answers in roughly half the time but reads more results, so costs a little more.
     public static var fastSearch: Bool { get { bool("fastSearch", true) } set { setBool("fastSearch", newValue) } }
+    /// Seconds of silence before Mycroft decides you've finished talking.
+    public static var endSilence: Double {
+        get { State.get("endSilence").flatMap(Double.init).map { min(max($0, 0.5), 3) } ?? 1.5 }
+        set { State.set("endSilence", String(newValue)) }
+    }
     /// "City, Country", used for weather and local answers.
     public static var city: String {
         get { State.get("city").flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } ?? "Konya, Turkey" }

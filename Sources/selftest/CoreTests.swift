@@ -1,5 +1,5 @@
 import Foundation
-@testable import JarvisCore
+@testable import MycroftCore
 
 struct Yes: Confirming { var answer = true; func confirm(_ d: String) async -> Bool { answer } }
 
@@ -16,7 +16,7 @@ final class StubTransport: Transport {
 }
 
 func tmp(_ name: String) -> URL {
-    let d = FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-test-\(UUID().uuidString)")
+    let d = FileManager.default.temporaryDirectory.appendingPathComponent("mycroft-test-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
     return d.appendingPathComponent(name)
 }
@@ -51,11 +51,11 @@ func runRouterTests() {
 }
 
 func runIntentTests() {
-    expectEqual(Intent.parse("Jarvis, mute."), .mute)
+    expectEqual(Intent.parse("Mycroft, mute."), .mute)
     expectEqual(Intent.parse("Mycroft, mute."), .mute)
     expectEqual(Intent.parse("mycroft stop"), .stop)
     expectEqual(Intent.parse("stop"), .stop)
-    expectEqual(Intent.parse("Jarvis, use Opus"), .setMode(.opus))
+    expectEqual(Intent.parse("Mycroft, use Opus"), .setMode(.opus))
     expectEqual(Intent.parse("Use auto."), .setMode(.auto))
     expectEqual(Intent.parse("How much have I spent?"), .spend)
     expectEqual(Intent.parse("What do you know about me?"), .whatDoYouKnow)
@@ -159,7 +159,7 @@ func runBrainTests() async {
     expect((results?.first?["content"] as? String)?.contains("hello") == true, "tool result carries output")
     expectEqual(b2.conversation.exchanges.count, 1)
 
-    // History keeps the commands Jarvis ran, so the next turn can see the earlier action really happened
+    // History keeps the commands Mycroft ran, so the next turn can see the earlier action really happened
     t2.responses = [textResp("Still done, sir.", model: "claude-sonnet-5-5")]
     _ = try? await b2.respond(to: "did you do it?")
     let hist = t2.requests.last?["messages"] as? [[String: Any]] ?? []
@@ -204,7 +204,7 @@ func runBrainTests() async {
     expectEqual(m2.map { $0["role"] as? String ?? "" }, ["user", "system", "assistant", "user", "assistant", "user"], "time note stays put through the tool loop")
 
     // Declined risky command is reported, not run
-    let marker = NSTemporaryDirectory() + "jarvis-marker-\(UUID().uuidString)"
+    let marker = NSTemporaryDirectory() + "mycroft-marker-\(UUID().uuidString)"
     let no = CommandRunner(confirmer: Yes(answer: false), logURL: tmp("c.log"))
     let d = await no.run("rm -f \(marker)")
     expect(d.declined)
@@ -284,10 +284,11 @@ func runAudioTests() {
     d = EndpointDetector(startTimeout: 5)
     _ = drive(&d, rms: 0.018, ms: 400)
     expect(d.threshold > 0.05, "threshold \(d.threshold)")
-    // max duration
+    // max duration: 40 s of talking is allowed, then it ends
     d = EndpointDetector(startTimeout: 5)
     _ = drive(&d, rms: 0.004, ms: 400)
-    expectEqual(drive(&d, rms: 0.1, ms: 25000), .done(hadSpeech: true))
+    expectEqual(drive(&d, rms: 0.1, ms: 35000), .speaking)
+    expectEqual(drive(&d, rms: 0.1, ms: 6000), .done(hadSpeech: true))
 
     let wav = WAV.encode([0, 0.5, -0.5, 1.0])
     expectEqual(wav.count, 44 + 8)
@@ -304,7 +305,7 @@ func runAudioTests() {
     expect(Speech.keepOrDelete("what") == nil)
 }
 
-// MARK: ML pipelines (wake word, voiceprint) — need the models in ~/jarvis/models
+// MARK: ML pipelines (wake word, voiceprint) — need the models in ~/Library/Application Support/Mycroft/models
 
 func synth(_ text: String, voice: String, rate: Int = 175) -> [Float] {
     let aiff = NSTemporaryDirectory() + "st-\(UUID().uuidString).aiff", wav = aiff + ".wav"

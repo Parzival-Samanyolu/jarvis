@@ -83,7 +83,7 @@ public final class Brain {
     let runner: CommandRunner
     let apiKey: () -> String?
     var useFallbacks = true
-    /// When set, every exchange (what was heard, what Jarvis said) is appended here. Off in tests.
+    /// When set, every exchange (what was heard, what Mycroft said) is appended here. Off in tests.
     public var conversationLog: URL?
     /// Current time for the system prompt (replaceable in tests).
     var clock: () -> Date = Date.init
@@ -97,7 +97,7 @@ public final class Brain {
 
     // MARK: Public API
 
-    /// One spoken exchange: the user's words in, Jarvis's reply out. Updates short-term context.
+    /// One spoken exchange: the user's words in, Mycroft's reply out. Updates short-term context.
     public func respond(to text: String, speech: LiveSpeech? = nil) async throws -> String {
         conversation.expireIfIdle()
         runner.beginRequest()
@@ -142,7 +142,7 @@ public final class Brain {
     func logExchange(heard: String, reply: String) {
         guard let url = conversationLog else { return }
         let t = ISO8601DateFormatter().string(from: Date())
-        let line = "\(t)\tYou: \(heard)\n\(t)\tJarvis [\(lastModel?.label ?? "?")]: \(reply.replacingOccurrences(of: "\n", with: " "))\n"
+        let line = "\(t)\tYou: \(heard)\n\(t)\tMycroft [\(lastModel?.label ?? "?")]: \(reply.replacingOccurrences(of: "\n", with: " "))\n"
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
         else { try? line.write(to: url, atomically: true, encoding: .utf8) }
@@ -233,7 +233,7 @@ public final class Brain {
              "description": "Take a screenshot of the owner's screen. Only use when the owner asks about what is on their screen.",
              "input_schema": schema([:], required: [])],
             ["name": "notes",
-             "description": "Save to or read from the 'Jarvis' folder in the Notes app.",
+             "description": "Save to or read from the 'Mycroft' folder in the Notes app.",
              "input_schema": schema(["action": ["type": "string", "enum": ["save", "search", "last", "recent"]],
                                      "text": ["type": "string", "description": "Note text for save, or search words for search"]], required: ["action"])],
         ]
@@ -314,7 +314,7 @@ public final class Brain {
             }
             let msg = ((json["error"] as? [String: Any])?["message"] as? String) ?? String(decoding: data, as: UTF8.self)
             if status == 400, body["fallbacks"] != nil, msg.lowercased().contains("fallback") {
-                FileHandle.standardError.write(Data("jarvis: API rejected fallbacks (\(msg)); continuing without\n".utf8))
+                FileHandle.standardError.write(Data("mycroft: API rejected fallbacks (\(msg)); continuing without\n".utf8))
                 body["fallbacks"] = nil; useFallbacks = false; continue   // beta shape rejected: carry on without it
             }
             if [429, 500, 502, 503, 529].contains(status), attempt < 2 {

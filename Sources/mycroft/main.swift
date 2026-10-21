@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import JarvisCore
+import MycroftCore
 
 struct TerminalConfirmer: Confirming {
     func confirm(_ description: String) async -> Bool {
@@ -11,7 +11,7 @@ struct TerminalConfirmer: Confirming {
 
 func runCLI() async {
     guard Keychain.apiKey() != nil else {
-        print("No API key. Run `jarvis --set-key` or set ANTHROPIC_API_KEY."); return
+        print("No API key. Run `mycroft --set-key` or set ANTHROPIC_API_KEY."); return
     }
     let brain = Brain(runner: CommandRunner(confirmer: TerminalConfirmer()))
     let speaker = CommandLine.arguments.contains("--speak") ? Speaker() : nil
@@ -148,7 +148,7 @@ if args.contains("--set-key") {
     }
     dispatchMain()
 } else if args.contains("--settings") {
-    DistributedNotificationCenter.default().postNotificationName(.init("com.jarvis.openSettings"), object: nil, userInfo: nil, deliverImmediately: true)
+    DistributedNotificationCenter.default().postNotificationName(.init("com.mycroft.openSettings"), object: nil, userInfo: nil, deliverImmediately: true)
 } else if let i = args.firstIndex(of: "--test-hear") {
     // Diagnostic: the Mac says a request aloud; the real mic and the app's live transcription path write it down.
     let phrase = i + 1 < args.count ? args[i + 1] : "What's the weather like in Konya today?"
