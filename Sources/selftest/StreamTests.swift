@@ -137,3 +137,19 @@ func runOfflineTests() async {
     var p = LinePicker(); var last = ""
     for _ in 0..<20 { let l = p.offline(); expect(l != last); last = l }
 }
+
+func runVoiceTests() {
+    let list = """
+    Daniel (English (UK)) en_GB    # Hello! My name is Daniel.
+    Grandpa (English (UK)) en_GB    # Hello! My name is Grandpa.
+    Jamie (Premium)     en_GB    # Hello! My name is Jamie.
+    Samantha (Enhanced) en_US    # Hello! My name is Samantha.
+    """
+    let v = Speaker.voices(list)
+    expectEqual(v.count, 4)
+    expectEqual(v[2].name, "Jamie (Premium)"); expectEqual(v[2].locale, "en_GB")
+    expectEqual(Speaker.pickVoice(installed: v, chosen: nil), "Jamie (Premium)")
+    expectEqual(Speaker.pickVoice(installed: v, chosen: "Grandpa (English (UK))"), "Grandpa (English (UK))")
+    expectEqual(Speaker.pickVoice(installed: v, chosen: "Not Installed"), "Jamie (Premium)")
+    expectEqual(Speaker.pickVoice(installed: Array(v.prefix(2)), chosen: nil), "Daniel (English (UK))")
+}

@@ -8,9 +8,30 @@ public final class Speaker {
     public var onSpeakingChanged: ((Bool) -> Void)?
 
     public init() {
-        // Grandpa (UK English, male), chosen 2026-10-20. Falls back to Daniel (UK male) if it isn't installed.
-        let list = Self.run("/usr/bin/say", ["-v", "?"])
-        voice = ["Grandpa (English (UK))", "Daniel (Premium)", "Daniel (Enhanced)"].first { list.contains($0) } ?? "Daniel"
+        voice = Self.pickVoice(installed: Self.voices(Self.run("/usr/bin/say", ["-v", "?"])), chosen: State.get("voice"))
+    }
+
+    /// Installed voices as (name, locale), from `say -v ?`.
+    public static func voices(_ list: String) -> [(name: String, locale: String)] {
+        // "Daniel (English (UK)) en_GB    # Hello!": the locale is the last word before the "#".
+        list.split(separator: "\n").compactMap { line in
+            let left = line.components(separatedBy: " #")[0].trimmingCharacters(in: .whitespaces)
+            guard let space = left.lastIndex(of: " ") else { return nil }
+            let locale = String(left[left.index(after: space)...])
+            guard locale.range(of: #"^[a-z]{2,3}_[A-Z0-9]{2,3}$"#, options: .regularExpression) != nil else { return nil }
+            return (left[..<space].trimmingCharacters(in: .whitespaces), locale)
+        }
+    }
+
+    /// The owner's chosen voice (`voice` in state.json) if installed; otherwise the best British voice:
+    /// Premium, then Enhanced (downloaded in System Settings, much more natural), then Daniel.
+    public static func pickVoice(installed: [(name: String, locale: String)], chosen: String?) -> String {
+        if let chosen, installed.contains(where: { $0.name == chosen }) { return chosen }
+        let british = installed.filter { $0.locale == "en_GB" }.map(\.name)
+        for tier in ["(Premium)", "(Enhanced)"] {
+            if let v = british.first(where: { $0.contains(tier) }) { return v }
+        }
+        return british.first { $0.hasPrefix("Daniel") } ?? "Daniel"
     }
 
     static func run(_ exe: String, _ args: [String]) -> String {

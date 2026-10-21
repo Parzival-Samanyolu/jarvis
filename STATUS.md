@@ -6,7 +6,7 @@ Last updated 2026-10-19. `swift run selftest --ml` passes (180 checks).
 | Spec step | State |
 | --- | --- |
 | 1 Terminal Q&A, persona, web search | Done. Live-tested on Haiku, Sonnet and Opus. |
-| 2 Spoken answers (`say -v "Grandpa (English (UK))"`) | Done. Grandpa (UK male), falling back to Daniel. Chosen 2026-10-20 after Daniel and Ava. |
+| 2 Spoken answers (`say`) | Done. Arthur (Enhanced), British, chosen 2026-10-21 after the compact voices (Daniel, Eddy, Reed, Rocko, Grandpa) were all rejected. Set by `voice` in `state.json`; otherwise the first British Premium, then Enhanced voice, then Daniel. Enhanced/Premium voices are downloaded in System Settings → Accessibility → Spoken Content → System voice → ⓘ. |
 | 6 `run_command`, safety, log, retry cap, secret stripping | Done and tested (46 safety checks). A live `ls` ran. |
 | 8 Memory, forget, weekly review logic | Done and tested. Haiku extraction live-tested. |
 | 9 Modes, usage log, $80 cap | Done and tested. Auto = Sonnet for everything, Opus for "think deeply", Haiku only at the cap (2026-10-20). |

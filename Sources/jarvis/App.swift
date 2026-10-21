@@ -47,6 +47,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     func applicationDidFinishLaunching(_ n: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        NSLog("Jarvis: voice is %@", speaker.voice)
         brain = Brain(runner: CommandRunner(confirmer: self))
         brain.conversationLog = Paths.conversationLog
         if let raw = State.get("mode"), let m = Mode(rawValue: raw) { brain.mode = m }

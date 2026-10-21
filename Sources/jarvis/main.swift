@@ -147,6 +147,23 @@ if args.contains("--set-key") {
         exit(0)
     }
     dispatchMain()
+} else if let i = args.firstIndex(of: "--test-hear") {
+    // Diagnostic: the Mac says a request aloud; the real mic and the app's live transcription path write it down.
+    let phrase = i + 1 < args.count ? args[i + 1] : "What's the weather like in Konya today?"
+    Task { @MainActor in
+        let t = Transcriber(); await t.prepare()
+        print("mic: \(Recorder.currentMicName)")
+        let live = t.begin()
+        print("live transcription: \(live == nil ? "no (Whisper)" : "yes (Apple)")")
+        let rec = Recorder()
+        Task.detached { try? await Task.sleep(nanoseconds: 600_000_000); let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/say"); p.arguments = [phrase]; try? p.run(); p.waitUntilExit() }
+        guard let wav = await rec.record(startTimeout: 6, onAudio: live.map { l in { l.feed($0) } }) else { print("RESULT: nothing heard"); exit(1) }
+        let t0 = Date()
+        let text = await t.transcribe(wav, live: live)
+        print(String(format: "RESULT: \"%@\" (%.2fs after recording ended)", text, Date().timeIntervalSince(t0)))
+        exit(0)
+    }
+    dispatchMain()
 } else if args.contains("--stt-bench") {
     // Diagnostic: Whisper vs Apple's live transcriber on synthetic voices with different accents.
     Task { await sttBench(); exit(0) }
