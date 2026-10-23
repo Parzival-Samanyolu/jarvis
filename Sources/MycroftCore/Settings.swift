@@ -26,6 +26,26 @@ public enum Humour: String, CaseIterable {
     }
 }
 
+/// Who Mycroft is being. The butler is the default; the others are menu-bar costumes.
+public enum Persona: String, CaseIterable {
+    case butler, undercover, comrade, bigBrother
+    public var label: String {
+        switch self { case .butler: return "Butler"; case .undercover: return "Undercover"; case .comrade: return "Comrade"; case .bigBrother: return "Big Brother" }
+    }
+    public var blurb: String {
+        switch self {
+        case .butler: return "British butler, dry wit"
+        case .undercover: return "American voice, friendly and casual, no politics"
+        case .comrade: return "Soviet Party official, Russian accent, five-year plans and the KGB"
+        case .bigBrother: return "Orwell's Ministry of Truth announcer, 1984"
+        }
+    }
+    /// What the owner is called in fixed lines ("sir" is swapped for this).
+    public var address: String {
+        switch self { case .butler: return "sir"; case .undercover: return ""; case .comrade: return "comrade"; case .bigBrother: return "citizen" }
+    }
+}
+
 /// The owner's settings, kept in state.json. Anything unset keeps the original behaviour.
 public enum Settings {
     static func bool(_ key: String, _ fallback: Bool) -> Bool { State.get(key).map { $0 == "on" } ?? fallback }
@@ -41,8 +61,13 @@ public enum Settings {
         get { State.get("humour").flatMap(Humour.init(rawValue:)) ?? .normal }
         set { State.set("humour", newValue.rawValue) }
     }
+    /// Which persona is on. Before personas there was only the undercover switch, so that is the fallback.
+    public static var persona: Persona {
+        get { State.get("persona").flatMap(Persona.init(rawValue:)) ?? (bool("undercover", false) ? .undercover : .butler) }
+        set { State.set("persona", newValue.rawValue) }
+    }
     /// Undercover mode: an American voice and a friendly, casual persona with no politics.
-    public static var undercover: Bool { get { bool("undercover", false) } set { setBool("undercover", newValue) } }
+    public static var undercover: Bool { persona == .undercover }
     public static var followUp: Bool { get { bool("followUp", true) } set { setBool("followUp", newValue) } }
     public static var openingLine: Bool { get { bool("openingLine", true) } set { setBool("openingLine", newValue) } }
     public static var shutdownLine: Bool { get { bool("shutdownLine", true) } set { setBool("shutdownLine", newValue) } }

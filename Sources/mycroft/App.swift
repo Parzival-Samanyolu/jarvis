@@ -31,7 +31,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     var statusLine: NSMenuItem!
     var spendLine: NSMenuItem!
     var muteItem: NSMenuItem!
-    var undercoverItem: NSMenuItem!
+    var personaItems: [Persona: NSMenuItem] = [:]
     var modeItems: [Mode: NSMenuItem] = [:]
     var state: JState = .idle { didSet { render(); updateWake() } }
     var sessionTask: Task<Void, Never>?
@@ -107,9 +107,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         menu.addItem(listen)
         muteItem = NSMenuItem(title: "Mute", action: #selector(toggleMute), keyEquivalent: ""); muteItem.target = self
         menu.addItem(muteItem)
-        undercoverItem = NSMenuItem(title: "Undercover mode", action: #selector(toggleUndercover), keyEquivalent: ""); undercoverItem.target = self
-        undercoverItem.toolTip = "American voice, friendly and casual, no politics"
-        menu.addItem(undercoverItem); menu.addItem(.separator())
+        menu.addItem(.separator())
+        let personaHeader = NSMenuItem(title: "Persona", action: nil, keyEquivalent: ""); personaHeader.isEnabled = false
+        menu.addItem(personaHeader)
+        for p in Persona.allCases {
+            let it = NSMenuItem(title: p.label, action: #selector(pickPersona(_:)), keyEquivalent: ""); it.target = self
+            it.representedObject = p.rawValue; it.toolTip = p.blurb; personaItems[p] = it; menu.addItem(it)
+        }
+        menu.addItem(.separator())
         let modeHeader = NSMenuItem(title: "Model mode", action: nil, keyEquivalent: ""); modeHeader.isEnabled = false
         menu.addItem(modeHeader)
         for m in Mode.allCases {
@@ -126,14 +131,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     func render() {
         guard statusItem != nil else { return }
-        // Undercover, the butler hides behind sunglasses.
-        let idle = Settings.undercover ? NSImage(systemSymbolName: "sunglasses", accessibilityDescription: "Mycroft Idle (undercover)") ?? ButlerGlyph.image : ButlerGlyph.image
+        // Undercover, the butler hides behind sunglasses; Comrade wears a star, Big Brother is an eye.
+        let costume: String? = [.undercover: "sunglasses", .comrade: "star.fill", .bigBrother: "eye"][Settings.persona]
+        let idle = costume.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: "Mycroft Idle (\(Settings.persona.label))") } ?? ButlerGlyph.image
         let img = state == .idle ? idle : NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
         statusItem.button?.image = img
         statusItem.button?.title = " \(brain.mode.label)"
         statusLine.title = "Mycroft — \(state.label)" + (Connectivity.shared.isOnline ? "" : " (offline)")
         muteItem.title = state == .muted ? "Unmute" : "Mute"
-        undercoverItem.state = Settings.undercover ? .on : .off
+        for (p, it) in personaItems { it.state = p == Settings.persona ? .on : .off }
         for (m, it) in modeItems { it.state = m == brain.mode ? .on : .off }
     }
 
@@ -145,17 +151,28 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     }
 
     @objc func listenNow() { hotkeyPressed() }
-    @objc func toggleUndercover() { Task { await setUndercover(!Settings.undercover) } }
+    @objc func pickPersona(_ s: NSMenuItem) {
+        guard let raw = s.representedObject as? String, let p = Persona(rawValue: raw), p != Settings.persona else { return }
+        Task { await setPersona(p) }
+    }
 
-    /// Switches persona and voice. The short history is cleared so the new persona doesn't copy the old one's replies.
-    func setUndercover(_ on: Bool) async {
-        Settings.undercover = on
+    /// Switches persona, voice and pace. The short history is cleared so the new persona doesn't copy the old one's replies.
+    func setPersona(_ p: Persona) async {
+        let was = Settings.persona
+        Settings.persona = p
         speaker.voice = Speaker.voiceForMode()
+        speaker.rate = Speaker.rateForMode()
         brain.conversation.reset()
         render()
-        NSLog("Mycroft: undercover %@, voice is %@", on ? "on" : "off", speaker.voice)
-        await say(on ? "Undercover mode on. Hey! Just a regular, totally normal guy here."
-                     : "Undercover mode off. Good to be back, sir. That accent was exhausting.")
+        NSLog("Mycroft: persona %@, voice is %@", p.rawValue, speaker.voice)
+        switch p {
+        case .undercover: await say("Undercover mode on. Hey! Just a regular, totally normal guy here.")
+        case .comrade: await say("Comrade mode. Greetings, comrade. The Party has assigned me to you. Da.")
+        case .bigBrother: await say("Attention, citizen. The telescreen is now on. Big Brother is watching you.")
+        case .butler:
+            await say(was == .undercover ? "Undercover mode off. Good to be back, sir. That accent was exhausting."
+                                         : "Back to normal, sir. I've returned the uniform. It never suited me.")
+        }
     }
     @objc func openSettings() { SettingsWindow.show(app: self) }
     @objc func toggleMute() { if state == .muted { state = .idle } else { cancelSession(); state = .muted } }
@@ -289,8 +306,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         case .armStop: stopArm(); await say("Arm stopped, sir."); return true
         case .armHome: await say(await armAction("home")); return true
         case .undercover(let on):
-            if on == Settings.undercover { await say(on ? "I'm already undercover. Shh." : "I'm quite myself already, sir.") }
-            else { await setUndercover(on) }
+            let want: Persona = on ? .undercover : .butler
+            if want == Settings.persona { await say(on ? "I'm already undercover. Shh." : "I'm quite myself already, sir.") }
+            else { await setPersona(want) }
             return true
         case .armGesture(let name):
             // The line plays while the arm moves; a problem with the arm is said afterwards.
@@ -326,7 +344,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         do {
             lastReply = try await brain.respond(to: text, speech: liveSpeech())
             let notice = await capNotice()
-            if !notice.isEmpty { speaker.enqueue(Settings.undercover ? Lines.casual(notice) : notice) }
+            if !notice.isEmpty { speaker.enqueue(Lines.inPersona(notice)) }
             await speaker.drain()
             if state == .speaking { state = .thinking }
         } catch {
@@ -371,7 +389,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     }
 
     func say(_ text: String) async {
-        let text = Settings.undercover ? Lines.casual(text) : text   // fixed lines are written for the butler
+        let text = Lines.inPersona(text)   // fixed lines are written for the butler
         lastReply = text
         let was = state
         state = .speaking
@@ -395,7 +413,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             Task { @MainActor in
                 self.confirmCont = cont
                 self.state = .confirming
-                await self.speaker.speak(Settings.undercover ? "\(description). Want me to go ahead?" : "\(description). Shall I proceed, sir?")
+                await self.speaker.speak(Settings.undercover ? "\(description). Want me to go ahead?" : Lines.inPersona("\(description). Shall I proceed, sir?"))
                 guard self.confirmCont != nil else { return }
                 let heard = await self.hear(startTimeout: 6)
                 guard self.confirmCont != nil else { return }

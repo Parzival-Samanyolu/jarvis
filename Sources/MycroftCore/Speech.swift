@@ -14,7 +14,7 @@ public final class Speaker {
 
     public init() {
         _voice = Self.voiceForMode()
-        _rate = Settings.rate
+        _rate = Self.rateForMode()
     }
 
     public static func installed() -> [(name: String, locale: String)] { voices(run("/usr/bin/say", ["-v", "?"])) }
@@ -52,9 +52,26 @@ public final class Speaker {
         return us.first { $0.hasPrefix("Samantha") } ?? "Samantha"
     }
 
-    /// The voice for the current mode.
+    /// The voice for the current persona. Comrade reads English with Milena, a Russian voice, for the accent;
+    /// Big Brother is Rocko. Either falls back to the butler's voice if missing.
     public static func voiceForMode(installed: [(name: String, locale: String)] = installed()) -> String {
-        Settings.undercover ? pickAmerican(installed: installed) : pickVoice(installed: installed, chosen: Settings.voice)
+        func named(_ prefix: String) -> String? { installed.first { $0.name.hasPrefix(prefix) }?.name }
+        switch Settings.persona {
+        case .undercover: return pickAmerican(installed: installed)
+        case .comrade: if let v = named("Milena") { return v }
+        case .bigBrother: if let v = named("Rocko") { return v }
+        case .butler: break
+        }
+        return pickVoice(installed: installed, chosen: Settings.voice)
+    }
+
+    /// Words a minute for the current persona: Milena is slowed so her English stays understandable.
+    public static func rateForMode() -> Int? {
+        switch Settings.persona {
+        case .comrade: return 130
+        case .bigBrother: return 160
+        case .butler, .undercover: return Settings.rate
+        }
     }
 
     static func run(_ exe: String, _ args: [String]) -> String {

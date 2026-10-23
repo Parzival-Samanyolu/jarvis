@@ -96,9 +96,44 @@ public struct Gesture {
         "celebrate": ["Let's go!", "Woo! Nailed it!", "Yeah! Victory dance!"],
     ]
 
+    /// Comrade mode's lines, by gesture.
+    static let comradeLines: [String: [String]] = [
+        "salute": ["For the motherland, comrade!", "Reporting for duty, comrade.", "Glory to the collective!"],
+        "bow": ["I bow to the will of the people.", "A humble servant of the Party."],
+        "royal wave": ["Waving from the parade stand, comrade.", "Wave to the tractors, comrade. They work so hard."],
+        "wave": ["Privet, comrade!", "Hello, comrade!", "Do svidaniya!"],
+        "nod": ["Da.", "Da, comrade. The Party agrees.", "Correct, comrade."],
+        "shake": ["Nyet.", "Nyet, comrade. Request denied.", "Absolutely nyet."],
+        "tea": ["Tea from the samovar, comrade. Strong, like the economy. On paper.", "Tea, comrade. Rationed, but tea."],
+        "point": ["That way, comrade. To the factory.", "Forward, comrade! To the next five-year plan."],
+        "mic drop": ["The plan is complete.", "Mycroft out. Glory to the collective."],
+        "celebrate": ["Plan over-fulfilled by three hundred percent!", "Victory for the workers!", "Ura!"],
+    ]
+
+    /// Big Brother mode's lines, by gesture.
+    static let bigBrotherLines: [String: [String]] = [
+        "salute": ["Long live Big Brother.", "Reporting to the Ministry, citizen."],
+        "bow": ["We bow to Big Brother.", "A loyal servant of the Party, citizen."],
+        "royal wave": ["Wave to the telescreen, citizen. It's waving back.", "Hello to all citizens. All of you. We see you."],
+        "wave": ["Hello, citizen.", "Goodbye, citizen. For now.", "We see you, citizen."],
+        "nod": ["Doubleplusgood.", "Correct, citizen.", "The Party agrees."],
+        "shake": ["Ungood.", "Doubleplusungood, citizen.", "That is thoughtcrime, citizen."],
+        "tea": ["Victory Tea, citizen. Tastes almost like tea.", "Tea, citizen. Or Victory Gin, if it's been that kind of day."],
+        "point": ["That way, citizen. Towards the Ministry of Love.", "Over there. Not Room 101, don't worry."],
+        "mic drop": ["The record has been corrected.", "Big Brother out."],
+        "celebrate": ["Chocolate rations increased!", "Victory over Eastasia!", "Doubleplusgood!"],
+    ]
+
     /// A line for this gesture in the current persona.
     public var line: String {
-        (Settings.undercover ? Gesture.casualLines[name] ?? ["You got it."] : lines).randomElement() ?? ""
+        let list: [String]
+        switch Settings.persona {
+        case .butler: list = lines
+        case .undercover: list = Gesture.casualLines[name] ?? ["You got it."]
+        case .comrade: list = Gesture.comradeLines[name] ?? ["Da, comrade."]
+        case .bigBrother: list = Gesture.bigBrotherLines[name] ?? ["Very good, citizen."]
+        }
+        return list.randomElement() ?? ""
     }
 
     public static func named(_ name: String) -> Gesture? {

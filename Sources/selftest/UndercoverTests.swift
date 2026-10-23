@@ -36,4 +36,24 @@ func runUndercoverTests() {
     expectEqual(Intent.parse("Mycroft, undercover mode on"), .undercover(true))
     expectEqual(Intent.parse("Blow your cover!"), .undercover(false))
     expectEqual(Intent.parse("Turn off undercover mode please"), .undercover(false))
+
+    expectEqual(Intent.parse("Back to normal"), .undercover(false))
+
+    // Comrade and Big Brother.
+    expectEqual(Lines.inPersona("Timer set for 25 minutes, sir.", .comrade), "Timer set for 25 minutes, comrade.")
+    expectEqual(Lines.inPersona("Sir, your 25 minute timer is up.", .bigBrother), "Citizen, your 25 minute timer is up.")
+    expectEqual(Lines.inPersona("Very good, sir.", .butler), "Very good, sir.")
+    expectEqual(Lines.inPersona("Very good, sir.", .undercover), "You got it.")
+    expectEqual(Lines.inPersona("A desire to serve.", .comrade), "A desire to serve.", "only whole words")
+    for p in Persona.allCases { expectEqual(Persona(rawValue: p.rawValue), p) }
+    expect(Prompts.comrade.contains("comrade") && Prompts.bigBrother.contains("citizen"))
+    expect(Prompts.bigBrother.contains("Nineteen Eighty-Four") && Prompts.comrade.contains("KGB"))
+    for list in [Lines.Comrade.opening, Lines.Comrade.errors, Lines.Comrade.shutdown, Lines.Comrade.offline, Lines.Comrade.working, Lines.Comrade.searching,
+                 Lines.BigBrother.opening, Lines.BigBrother.errors, Lines.BigBrother.shutdown, Lines.BigBrother.offline, Lines.BigBrother.working, Lines.BigBrother.searching] {
+        expect(list.count >= 3)
+        for l in list { expect(!l.lowercased().contains("sir"), "persona line still says sir: \(l)") }
+    }
+    expectEqual(Set(Gesture.comradeLines.keys), Set(Gesture.all.map(\.name)), "every gesture has comrade lines")
+    expectEqual(Set(Gesture.bigBrotherLines.keys), Set(Gesture.all.map(\.name)), "every gesture has Big Brother lines")
+    expectEqual(Lines.forPersona("b", "u", "c", "x", .comrade), "c")
 }

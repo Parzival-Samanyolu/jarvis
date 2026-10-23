@@ -27,7 +27,7 @@ final class SettingsModel: ObservableObject {
     let voices: [String]
     static let sample = "Very good, sir. Something has failed, and I shall blame the French, as is tradition."
 
-    @Published var voice: String { didSet { Settings.voice = voice; if !Settings.undercover { app?.speaker.voice = voice } } }
+    @Published var voice: String { didSet { Settings.voice = voice; if Settings.persona == .butler { app?.speaker.voice = voice } } }
     @Published var customRate: Bool { didSet { applyRate() } }
     @Published var rate: Double { didSet { applyRate() } }
     @Published var humour: Humour { didSet { Settings.humour = humour } }
@@ -52,7 +52,7 @@ final class SettingsModel: ObservableObject {
         let english = Speaker.installed().filter { $0.locale.hasPrefix("en_") }.map(\.name)
         func rank(_ v: String) -> Int { v.contains("(Premium)") ? 0 : v.contains("(Enhanced)") ? 1 : 2 }
         voices = Array(Set(english)).sorted { (rank($0), $0) < (rank($1), $1) }
-        voice = app.speaker.voice
+        voice = Speaker.pickVoice(installed: Speaker.installed(), chosen: Settings.voice)   // the butler's voice, whatever the persona
         customRate = Settings.rate != nil
         rate = Double(Settings.rate ?? 185)
         humour = Settings.humour
@@ -72,7 +72,7 @@ final class SettingsModel: ObservableObject {
 
     func applyRate() {
         let r = customRate ? Int(rate) : nil
-        Settings.rate = r; app?.speaker.rate = r
+        Settings.rate = r; app?.speaker.rate = Speaker.rateForMode()   // Comrade and Big Brother keep their own pace
     }
     func playSample() { app?.speaker.stop(); app?.speaker.enqueue(Self.sample) }
     func saveCity() { city = city.trimmingCharacters(in: .whitespaces); Settings.city = city; city = Settings.city }

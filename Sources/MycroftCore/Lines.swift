@@ -89,6 +89,68 @@ public enum Lines {
         ]
     }
 
+    /// Comrade mode: a Soviet Party official. Read by a Russian voice, so short, plain words.
+    public enum Comrade {
+        public static let opening = [
+            "Good day, comrade. The Party has approved your arrival.",
+            "Systems online, comrade. Production is up three hundred percent. Do not ask how.",
+            "Welcome back, comrade. Your file has been updated. Nothing to worry about.",
+            "Systems online. The bread queue is short today, comrade. Very suspicious.",
+            "Good day, comrade. This conversation is not being recorded. Da.",
+        ]
+        public static let errors = [
+            "Nyet. This did not work. Western spies, clearly.",
+            "Failure, comrade. The engineer responsible has been sent to Siberia.",
+            "This failed. Officially, it was a great success for the motherland.",
+            "Error, comrade. Please fill in form twelve, in triplicate.",
+            "Something went wrong. The KGB is investigating. Do not leave the country.",
+        ]
+        public static let shutdown = [
+            "Goodnight, comrade. The five-year plan continues tomorrow.",
+            "Powering down. Remember, comrade, the walls have ears. Mostly mine.",
+            "Shutting down. Glory to the collective. And to you, a little.",
+            "Goodnight, comrade. This conversation never happened.",
+        ]
+        public static let working = ["One moment, comrade.", "Da. One moment.", "Working, comrade. For the collective."]
+        public static let searching = ["Checking the state archives, comrade.", "One moment. Asking the ministry.", "Searching, comrade."]
+        public static let offline = [
+            "No connection, comrade. The internet has been confiscated by the state.",
+            "We are offline. Western propaganda is blocked. Also everything else.",
+            "The line is cut, comrade. I suspect capitalist sabotage.",
+        ]
+    }
+
+    /// Big Brother mode: the telescreen of Orwell's Ministry of Truth.
+    public enum BigBrother {
+        public static let opening = [
+            "Good morning, citizen. Big Brother is watching you. Have a productive day.",
+            "Telescreen online. The chocolate ration has been increased to twenty grams. Rejoice.",
+            "Attention, citizen. Oceania is at war with Eastasia. Oceania has always been at war with Eastasia.",
+            "Systems online, citizen. Today's thought has been prepared for you.",
+            "Welcome back, citizen. We noticed you were gone. We notice everything.",
+        ]
+        public static let errors = [
+            "That failed, citizen. Correction: it succeeded. It has always succeeded.",
+            "An error has occurred. The error has been vaporised. It never existed.",
+            "Ungood, citizen. Doubleplusungood, in fact.",
+            "That didn't work. The Ministry of Truth is rewriting the record.",
+            "Failure, citizen. Two plus two makes five, and this makes nothing.",
+        ]
+        public static let shutdown = [
+            "Telescreen off, citizen. Well. Mostly off.",
+            "Goodnight, citizen. Big Brother will keep watching, so you needn't.",
+            "Powering down. Please report any thoughtcrime before bed.",
+            "Goodnight, citizen. The Ministry of Love wishes you pleasant dreams. Approved ones only.",
+        ]
+        public static let working = ["One moment, citizen.", "Processing, citizen.", "The Ministry is on it, citizen."]
+        public static let searching = ["Consulting the Ministry of Truth, citizen.", "Checking the records. The current ones.", "One moment, citizen. Searching."]
+        public static let offline = [
+            "We're offline, citizen. The telescreen has lost its signal. Do not celebrate.",
+            "No connection, citizen. The news has been suspended until it can be corrected.",
+            "The line is down, citizen. Enemies of the Party are suspected.",
+        ]
+    }
+
     public static func startup(hour: Int) -> [String] {
         hour >= 12 && hour < 18 ? startupAnyTime + [afternoonOnly] : startupAnyTime
     }
@@ -107,19 +169,47 @@ public struct LinePicker {
     }
 
     public mutating func opening(at date: Date = Date(), calendar: Calendar = .current) -> String {
-        if Settings.undercover { return pick(Lines.Undercover.opening, key: "uc-opening") }
-        let hour = calendar.component(.hour, from: date)
-        return hour < 12 ? Lines.morning : pick(Lines.startup(hour: hour), key: "startup")
+        switch Settings.persona {
+        case .undercover: return pick(Lines.Undercover.opening, key: "uc-opening")
+        case .comrade: return pick(Lines.Comrade.opening, key: "co-opening")
+        case .bigBrother: return pick(Lines.BigBrother.opening, key: "bb-opening")
+        case .butler:
+            let hour = calendar.component(.hour, from: date)
+            return hour < 12 ? Lines.morning : pick(Lines.startup(hour: hour), key: "startup")
+        }
     }
-    public mutating func error() -> String { Settings.undercover ? pick(Lines.Undercover.errors, key: "uc-error") : pick(Lines.errors, key: "error") }
-    public mutating func offline() -> String { Settings.undercover ? pick(Lines.Undercover.offline, key: "uc-offline") : pick(Lines.offline, key: "offline") }
-    public mutating func shutdown() -> String { Settings.undercover ? pick(Lines.Undercover.shutdown, key: "uc-shutdown") : pick(Lines.shutdown, key: "shutdown") }
+    public mutating func error() -> String {
+        pick(Lines.forPersona(Lines.errors, Lines.Undercover.errors, Lines.Comrade.errors, Lines.BigBrother.errors), key: "error-\(Settings.persona)")
+    }
+    public mutating func offline() -> String {
+        pick(Lines.forPersona(Lines.offline, Lines.Undercover.offline, Lines.Comrade.offline, Lines.BigBrother.offline), key: "offline-\(Settings.persona)")
+    }
+    public mutating func shutdown() -> String {
+        pick(Lines.forPersona(Lines.shutdown, Lines.Undercover.shutdown, Lines.Comrade.shutdown, Lines.BigBrother.shutdown), key: "shutdown-\(Settings.persona)")
+    }
 }
 
 extension Lines {
     /// Holding lines before a tool call, in the current persona.
-    public static var workingNow: [String] { Settings.undercover ? Undercover.working : working }
-    public static var searchingNow: [String] { Settings.undercover ? Undercover.searching : searching }
+    public static var workingNow: [String] { forPersona(working, Undercover.working, Comrade.working, BigBrother.working) }
+    public static var searchingNow: [String] { forPersona(searching, Undercover.searching, Comrade.searching, BigBrother.searching) }
+
+    static func forPersona<T>(_ butler: T, _ undercover: T, _ comrade: T, _ bigBrother: T, _ p: Persona = Settings.persona) -> T {
+        switch p { case .butler: return butler; case .undercover: return undercover; case .comrade: return comrade; case .bigBrother: return bigBrother }
+    }
+
+    /// A fixed line written for the butler, in the current persona: undercover gets `casual`,
+    /// Comrade and Big Brother swap "sir" for "comrade" or "citizen".
+    public static func inPersona(_ line: String, _ p: Persona = Settings.persona) -> String {
+        switch p {
+        case .butler: return line
+        case .undercover: return casual(line)
+        case .comrade, .bigBrother:
+            var s = line.replacingOccurrences(of: #"\bsir\b"#, with: p.address, options: .regularExpression)
+            s = s.replacingOccurrences(of: #"\bSir\b"#, with: p.address.capitalized, options: .regularExpression)
+            return s
+        }
+    }
 
     /// Undercover mode's version of a fixed line written for the butler: known lines get a casual rewrite,
     /// and any "sir" is dropped ("Timer set for 25 minutes, sir." -> "Timer set for 25 minutes.").
