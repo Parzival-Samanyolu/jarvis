@@ -61,9 +61,10 @@ public final class LiveSpeech {
     /// Before the first tool call of a request, if nothing has been said yet, say something.
     func toolStarting(_ name: String) {
         flush()
+        if name == "timer" { return }   // instant; nothing to cover
         // Server tools (web search, and the code it runs to filter results) are lookups; the rest act on the Mac.
         let onMac = ["run_command", "notes", "look_at_screen"].contains(name)
-        if !spokeAnything { speak((onMac ? Lines.working : Lines.searching).randomElement()!) }
+        if !spokeAnything { speak((onMac ? Lines.workingNow : Lines.searchingNow).randomElement()!) }
     }
 }
 
@@ -79,6 +80,8 @@ public final class Brain {
     public let usage: UsageTracker
     public let memory: Memory
     public let conversation: Conversation
+    public let timers = Timers(file: Paths.timers)
+    public let arm = Arm()
     let transport: Transport
     let runner: CommandRunner
     let apiKey: () -> String?
@@ -236,6 +239,24 @@ public final class Brain {
              "description": "Save to or read from the 'Mycroft' folder in the Notes app.",
              "input_schema": schema(["action": ["type": "string", "enum": ["save", "search", "last", "recent"]],
                                      "text": ["type": "string", "description": "Note text for save, or search words for search"]], required: ["action"])],
+            ["name": "timer",
+             "description": "Set, list or cancel countdown timers and reminders on the Mac. Mycroft says aloud when one ends.",
+             "input_schema": schema(["action": ["type": "string", "enum": ["set", "list", "cancel"]],
+                                     "seconds": ["type": "integer", "description": "Length, for set"],
+                                     "reminder": ["type": "string", "description": "For a reminder, what to remind the owner to do, phrased to follow \"remind you to\" (\"call your sister\"). Leave out for a plain timer."]],
+                                    required: ["action"])],
+            ["name": "arm",
+             "description": "Move the owner's robotic arm (servos on an Arduino over USB). Angles are degrees and are clamped to each joint's limits; every move waits until the arm is still. Actions: status (angles, limits, saved poses), move (joint to degrees), nudge (joint by plus or minus degrees), open_gripper, close_gripper, home, gesture (a built-in move, by name: salute, bow, royal wave, wave, nod, shake, tea, point, mic drop, celebrate; ends at home), pose (go to a saved pose), save_pose (remember the current position under name), sequence (steps in order, for waves and demos), speed (degrees per second, 10 to 180), stop, relax (motors off; the arm goes limp). Joints: base, shoulder, elbow, wrist_pitch, wrist_roll, gripper.",
+             "input_schema": schema([
+                "action": ["type": "string", "enum": ["status", "move", "nudge", "open_gripper", "close_gripper", "home", "gesture", "pose", "save_pose", "sequence", "speed", "stop", "relax"]],
+                "joint": ["type": "string", "description": "For move and nudge"],
+                "degrees": ["type": "integer", "description": "Target angle for move, change for nudge, degrees per second for speed"],
+                "name": ["type": "string", "description": "Pose name for pose and save_pose, gesture name for gesture"],
+                "steps": ["type": "array", "description": "For sequence: each step has angles (joint name to degrees), or pose (a saved pose name), and an optional pause in seconds",
+                          "items": ["type": "object", "properties": [
+                            "angles": ["type": "object", "additionalProperties": ["type": "integer"]],
+                            "pose": ["type": "string"], "pause": ["type": "number"]]]],
+             ], required: ["action"])],
         ]
     }
 
@@ -273,6 +294,19 @@ public final class Brain {
             case "search": content = Notes.search(text)
             case "recent": content = Notes.recent(5)
             default: content = Notes.last()
+            }
+        case "arm":
+            let arm = self.arm
+            let (text, failed) = await withCheckedContinuation { c in DispatchQueue.global().async { c.resume(returning: arm.perform(input)) } }
+            content = text; isError = failed
+        case "timer":
+            switch input["action"] as? String {
+            case "set":
+                guard let secs = input["seconds"] as? Int, secs > 0 else { content = "Missing seconds."; isError = true; break }
+                let item = timers.start(seconds: secs, label: (input["reminder"] as? String) ?? "")
+                content = "Timer \(item.id) set for \(Timers.spoken(secs)); it ends at \(Self.clockTime(item.ends))."
+            case "cancel": content = "Cancelled \(timers.cancelAll()) timer(s)."
+            default: content = timers.status()
             }
         default:
             content = "Unknown tool."; isError = true
@@ -333,6 +367,11 @@ public final class Brain {
         if s.contains("sonnet") { return .sonnet }
         if s.contains("haiku") { return .haiku }
         return nil
+    }
+
+    static func clockTime(_ d: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_GB"); f.dateFormat = "HH:mm"
+        return f.string(from: d)
     }
 
     static func text(of content: [[String: Any]]) -> String {

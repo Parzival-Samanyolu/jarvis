@@ -8,7 +8,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [.executable(name: "mycroft", targets: ["mycroft"])],
     targets: [
-        // Thin C wrapper over onnxruntime (brew install onnxruntime) for the wake word and voiceprint models.
+        // Thin C wrapper over onnxruntime (brew install onnxruntime) for the wake-word models.
         .target(name: "COrt", cSettings: [.unsafeFlags(["-I/opt/homebrew/include/onnxruntime"])],
                 linkerSettings: [.unsafeFlags(["-L/opt/homebrew/lib", "-Xlinker", "-rpath", "-Xlinker", "/opt/homebrew/lib"]), .linkedLibrary("onnxruntime")]),
         .target(name: "MycroftCore", dependencies: ["COrt"]),

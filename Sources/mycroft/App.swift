@@ -31,6 +31,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     var statusLine: NSMenuItem!
     var spendLine: NSMenuItem!
     var muteItem: NSMenuItem!
+    var undercoverItem: NSMenuItem!
     var modeItems: [Mode: NSMenuItem] = [:]
     var state: JState = .idle { didSet { render(); updateWake() } }
     var sessionTask: Task<Void, Never>?
@@ -40,6 +41,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     var lastOpening: Date?
     var quitting = false
     var boundedID = 0, speakingBounded = false
+    var sessionID = 0
+    /// The last thing Mycroft said, for "say that again" (replayed without asking the model).
+    var lastReply = ""
     let sleepWatcher = SleepWatcher()
 
     // Confirming is called from the Brain's tool loop (off the main actor).
@@ -51,6 +55,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         brain = Brain(runner: CommandRunner(confirmer: self))
         brain.conversationLog = Paths.conversationLog
         if let raw = State.get("mode"), let m = Mode(rawValue: raw) { brain.mode = m }
+        brain.timers.onFire = { [weak self] item in Task { @MainActor in await self?.announce(item.announcement) } }
+        brain.timers.restore()
         if Models.wakeWordAvailable { wake = WakeListener(); wake?.onWake = { [weak self] in self?.wakeHeard() }; wake?.onDeviceChange = { [weak self] in self?.updateWake() } }
         buildMenu()
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in Task { @MainActor in await self?.checkBattery() } }
@@ -100,7 +106,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         let listen = NSMenuItem(title: "Listen now  (⌥ Space)", action: #selector(listenNow), keyEquivalent: ""); listen.target = self
         menu.addItem(listen)
         muteItem = NSMenuItem(title: "Mute", action: #selector(toggleMute), keyEquivalent: ""); muteItem.target = self
-        menu.addItem(muteItem); menu.addItem(.separator())
+        menu.addItem(muteItem)
+        undercoverItem = NSMenuItem(title: "Undercover mode", action: #selector(toggleUndercover), keyEquivalent: ""); undercoverItem.target = self
+        undercoverItem.toolTip = "American voice, friendly and casual, no politics"
+        menu.addItem(undercoverItem); menu.addItem(.separator())
         let modeHeader = NSMenuItem(title: "Model mode", action: nil, keyEquivalent: ""); modeHeader.isEnabled = false
         menu.addItem(modeHeader)
         for m in Mode.allCases {
@@ -117,11 +126,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     func render() {
         guard statusItem != nil else { return }
-        let img = state == .idle ? ButlerGlyph.image : NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
+        // Undercover, the butler hides behind sunglasses.
+        let idle = Settings.undercover ? NSImage(systemSymbolName: "sunglasses", accessibilityDescription: "Mycroft Idle (undercover)") ?? ButlerGlyph.image : ButlerGlyph.image
+        let img = state == .idle ? idle : NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
         statusItem.button?.image = img
         statusItem.button?.title = " \(brain.mode.label)"
         statusLine.title = "Mycroft — \(state.label)" + (Connectivity.shared.isOnline ? "" : " (offline)")
         muteItem.title = state == .muted ? "Unmute" : "Mute"
+        undercoverItem.state = Settings.undercover ? .on : .off
         for (m, it) in modeItems { it.state = m == brain.mode ? .on : .off }
     }
 
@@ -133,6 +145,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     }
 
     @objc func listenNow() { hotkeyPressed() }
+    @objc func toggleUndercover() { Task { await setUndercover(!Settings.undercover) } }
+
+    /// Switches persona and voice. The short history is cleared so the new persona doesn't copy the old one's replies.
+    func setUndercover(_ on: Bool) async {
+        Settings.undercover = on
+        speaker.voice = Speaker.voiceForMode()
+        brain.conversation.reset()
+        render()
+        NSLog("Mycroft: undercover %@, voice is %@", on ? "on" : "off", speaker.voice)
+        await say(on ? "Undercover mode on. Hey! Just a regular, totally normal guy here."
+                     : "Undercover mode off. Good to be back, sir. That accent was exhausting.")
+    }
     @objc func openSettings() { SettingsWindow.show(app: self) }
     @objc func toggleMute() { if state == .muted { state = .idle } else { cancelSession(); state = .muted } }
     @objc func pickMode(_ s: NSMenuItem) {
@@ -155,15 +179,35 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     func cancelSession() {
         sessionTask?.cancel(); sessionTask = nil
         recorder.cancel(); speaker.stop()
+        stopArm()
     }
 
-    func startSession() {
+    /// Halts the arm if it's connected (never waits for it to be found). The hotkey and "stop" both do this.
+    func stopArm() {
+        let arm = brain.arm
+        DispatchQueue.global().async { if arm.isConnected { _ = arm.perform(["action": "stop"]) } }
+    }
+
+    /// Runs an arm action off the main thread and returns what to say.
+    func armAction(_ action: String, name: String = "") async -> String {
+        let arm = brain.arm
+        let (text, failed) = await withCheckedContinuation { c in DispatchQueue.global().async { c.resume(returning: arm.perform(["action": action, "name": name])) } }
+        if failed { return text.hasPrefix("No arm found") ? "I can't find the arm, sir. Is it plugged in?" : "The arm refuses, sir. \(text)" }
+        return "Very good, sir."
+    }
+
+    func startSession(afterWake: Bool = false) {
         guard sessionTask == nil else { return }
-        state = .listening          // also stops the wake listener before the recorder opens the mic
+        sessionID += 1
+        let id = sessionID
+        // Also stops the wake listener before the recorder opens the mic, unless it's handing over what it
+        // heard after the wake word; then the recorder stops it once its own mic is running.
+        state = .listening
         sessionTask = Task { [weak self] in
-            await self?.session()
-            self?.sessionTask = nil
-            self?.updateWake()
+            await self?.session(afterWake: afterWake)
+            guard let self, self.sessionID == id else { return }   // a newer session took over
+            self.sessionTask = nil
+            self.updateWake()
         }
     }
 
@@ -176,17 +220,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         return state == .muted ? "Wake word: muted" : "Wake word: \"\(Models.wakePhrase)\" is on"
     }
 
-    /// The wake listener runs only when Mycroft is idle and the battery is fine.
+    /// The wake listener runs while Mycroft is idle, and while it answers in a conversation so "Hey Mycroft" can
+    /// interrupt it (not while muted, even when a timer is announced), as long as the battery is fine.
     func updateWake() {
         guard let wake else { return }
-        let should = Settings.wakeWord && state == .idle && sessionTask == nil && !greeting && !batteryPolicy.paused
-        if should { wake.start() } else { wake.stop() }
+        let should = Settings.wakeWord && !greeting && !batteryPolicy.paused && ((state == .idle && sessionTask == nil) || (state == .speaking && sessionTask != nil))
+        if should { wake.start() } else if !wake.isHandingOver { wake.stop() }
     }
 
     func wakeHeard() {
-        guard state == .idle, sessionTask == nil else { return }
+        if state == .speaking { speaker.stop(); cancelSession() }   // "Hey Mycroft" cuts it short
+        guard state == .idle || state == .speaking, sessionTask == nil else { _ = wake?.takeTail(); updateWake(); return }
         NSSound(named: "Tink")?.play()
-        startSession()
+        startSession(afterWake: true)
     }
 
     func checkBattery() async {
@@ -204,27 +250,34 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     // MARK: Conversation
 
-    func session() async {
+    func session(afterWake: Bool = false) async {
         var first = true
         while !Task.isCancelled {
             state = .listening
-            guard let text = await hear(startTimeout: first ? 8 : 5, then: .thinking) else { break }
+            guard let text = await hear(startTimeout: first ? 8 : 5, then: .thinking, afterWake: first && afterWake) else { break }
             if text.isEmpty { if first { break } else { continue } }
             first = false
             if !(await handle(text)) { break }
             if !Settings.followUp { break }   // one question per wake word
         }
-        if state != .muted { state = .idle }
+        if state != .muted && !Task.isCancelled { state = .idle }   // when cancelled, whoever cancelled sets the state
         if !Task.isCancelled || brain.conversation.exchanges.count > 0 { Task { _ = await brain.learn() } }
     }
 
     /// Records one utterance and returns its words (nil if nobody spoke). Apple's transcriber, when available,
     /// listens during the recording, so there's almost no wait once the owner stops.
-    func hear(startTimeout: TimeInterval, then after: JState? = nil) async -> String? {
+    /// With `afterWake`, the words said straight after "Hey Mycroft" (while the mic was being opened) are included.
+    func hear(startTimeout: TimeInterval, then after: JState? = nil, afterWake: Bool = false) async -> String? {
         let live = transcriber.begin()
-        guard let wav = await recorder.record(startTimeout: startTimeout, onAudio: live.map { l in { l.feed($0) } }) else {
-            live?.cancel(); return nil
-        }
+        let wake = afterWake ? self.wake : nil
+        let preroll: (() -> [Float])? = wake.map { w in { [weak self] in
+            let tail = w.takeTail()
+            DispatchQueue.main.async { self?.updateWake() }   // the recorder has the mic now
+            return tail
+        } }
+        let wav = await recorder.record(startTimeout: startTimeout, onAudio: live.map { l in { l.feed($0) } }, preroll: preroll)
+        if let wake, wake.isHandingOver { _ = wake.takeTail(); updateWake() }   // the mic never started
+        guard let wav else { live?.cancel(); return nil }
         if let after { state = after }
         return await transcriber.transcribe(wav, live: live)
     }
@@ -232,7 +285,33 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     /// Returns false when the conversation should end.
     func handle(_ text: String) async -> Bool {
         switch Intent.parse(text) {
-        case .stop: return false
+        case .stop: stopArm(); return false
+        case .armStop: stopArm(); await say("Arm stopped, sir."); return true
+        case .armHome: await say(await armAction("home")); return true
+        case .undercover(let on):
+            if on == Settings.undercover { await say(on ? "I'm already undercover. Shh." : "I'm quite myself already, sir.") }
+            else { await setUndercover(on) }
+            return true
+        case .armGesture(let name):
+            // The line plays while the arm moves; a problem with the arm is said afterwards.
+            async let moved = armAction("gesture", name: name)
+            await say(Gesture.named(name)?.line ?? "Very good, sir.")
+            let result = await moved
+            if result != "Very good, sir." { await say(result) }
+            return true
+        case .armGripper(let open): await say(await armAction(open ? "open_gripper" : "close_gripper")); return true
+        case .repeatLast:
+            await say(lastReply.isEmpty ? "I haven't said anything yet, sir." : lastReply)
+            return true
+        case .timer(let seconds, let label):
+            brain.timers.start(seconds: seconds, label: label)
+            await say(label.isEmpty ? "Timer set for \(Timers.spoken(seconds)), sir." : "Very good, sir. I'll remind you in \(Timers.spoken(seconds)).")
+            return true
+        case .timerStatus: await say(brain.timers.status()); return true
+        case .cancelTimers:
+            let n = brain.timers.cancelAll()
+            await say(n == 0 ? "There's no timer running, sir." : n == 1 ? "Timer cancelled, sir." : "All \(n) timers cancelled, sir.")
+            return true
         case .mute: await say("Muted, sir. Press option space when you need me."); state = .muted; return false
         case .setMode(let m): setMode(m); await say("Using \(m.label), sir."); return true
         case .spend: await say(brain.usage.report()); return true
@@ -245,9 +324,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         }
         if !Connectivity.shared.isOnline { await answerOffline(text); return true }
         do {
-            _ = try await brain.respond(to: text, speech: liveSpeech())
+            lastReply = try await brain.respond(to: text, speech: liveSpeech())
             let notice = await capNotice()
-            if !notice.isEmpty { speaker.enqueue(notice) }
+            if !notice.isEmpty { speaker.enqueue(Settings.undercover ? Lines.casual(notice) : notice) }
             await speaker.drain()
             if state == .speaking { state = .thinking }
         } catch {
@@ -292,10 +371,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     }
 
     func say(_ text: String) async {
+        let text = Settings.undercover ? Lines.casual(text) : text   // fixed lines are written for the butler
+        lastReply = text
         let was = state
         state = .speaking
         await speaker.speak(text)
         if state == .speaking { state = was == .muted ? .muted : (sessionTask == nil ? .idle : .thinking) }
+    }
+
+    /// A timer or reminder ended: a chime, then the line, once Mycroft isn't in the middle of a conversation
+    /// (so it isn't spoken into an open mic).
+    func announce(_ text: String) async {
+        while sessionTask != nil || greeting || state == .confirming { try? await Task.sleep(nanoseconds: 500_000_000) }
+        NSSound(named: "Glass")?.play()
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        await say(text)
     }
 
     // MARK: Risky-command confirmation (spoken yes, or the hotkey)
@@ -305,7 +395,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             Task { @MainActor in
                 self.confirmCont = cont
                 self.state = .confirming
-                await self.speaker.speak("\(description). Shall I proceed, sir?")
+                await self.speaker.speak(Settings.undercover ? "\(description). Want me to go ahead?" : "\(description). Shall I proceed, sir?")
                 guard self.confirmCont != nil else { return }
                 let heard = await self.hear(startTimeout: 6)
                 guard self.confirmCont != nil else { return }

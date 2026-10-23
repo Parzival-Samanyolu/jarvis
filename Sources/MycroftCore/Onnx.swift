@@ -34,5 +34,4 @@ public enum Models {
     public static var wakeWordAvailable: Bool {
         ["melspectrogram.onnx", "embedding_model.onnx", wakeWordFile].allSatisfy { FileManager.default.fileExists(atPath: path($0)) }
     }
-    public static var speakerAvailable: Bool { FileManager.default.fileExists(atPath: path("voxceleb_resnet34_LM.onnx")) }
 }

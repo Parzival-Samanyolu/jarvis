@@ -29,6 +29,10 @@ public struct SafetyChecker {
         "dscl": "changes accounts", "sysadminctl": "changes accounts", "passwd": "changes passwords",
         "crontab": "changes scheduled jobs", "visudo": "edits sudoers", "mount": "mounts disks", "umount": "unmounts disks",
     ]
+    static let powerScripts: [(String, String)] = [
+        ("shut down", "powers off the Mac"), ("restart", "restarts the Mac"), ("log out", "logs you out"),
+        ("sleep", "puts the Mac to sleep"), ("«event aevtrsdn»", "powers off the Mac"), ("«event aevtrrst»", "restarts the Mac"),
+    ]
     static let wrappers: Set<String> = ["command", "builtin", "nohup", "time", "env", "exec", "nice", "caffeinate"]
     static let writers: Set<String> = ["touch", "mkdir", "tee", "ln", "install", "truncate", "rsync", "unzip", "tar", "git", "curl", "wget", "ditto"]
 
@@ -39,6 +43,10 @@ public struct SafetyChecker {
         if pipeToShell.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)) != nil { return .risky("pipes a download into a shell") }
         if lower.contains("with administrator privileges") { return .risky("needs administrator rights") }
         if lower.contains("$(curl") || lower.contains("`curl") || lower.contains("<(curl") { return .risky("runs downloaded code") }
+        // Power actions through AppleScript ("tell application \"System Events\" to shut down").
+        if lower.contains("osascript") {
+            for (phrase, why) in Self.powerScripts where lower.contains(phrase) { return .risky(why) }
+        }
 
         for seg in Self.split(command) {
             let words = Self.words(seg.text)
@@ -46,6 +54,9 @@ public struct SafetyChecker {
             let name = (cmd as NSString).lastPathComponent
             if let why = Self.alwaysRisky[name] { return .risky(why) }
             if ["sh", "bash", "zsh"].contains(name), args.contains("-c") { return .risky("runs a nested shell") }
+            if name == "pmset", args.contains(where: { ["sleepnow", "displaysleepnow", "shutdown", "restart", "schedule", "repeat", "-a", "-b", "-c"].contains($0) }) {
+                return .risky("changes power: sleep, shutdown or schedules")
+            }
             if name == "defaults", args.first == "write" || args.first == "delete" { return .risky("changes system settings") }
             if name == "mv" || name == "cp" || name == "ditto" {
                 let paths = args.filter { !$0.hasPrefix("-") }

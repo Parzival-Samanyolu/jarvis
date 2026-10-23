@@ -16,6 +16,9 @@ public struct EndpointDetector {
 
     public init(startTimeout: TimeInterval) { self.startTimeout = startTimeout }
 
+    /// The first `calibration` seconds measure the room's noise floor.
+    public var isCalibrating: Bool { elapsed <= calibration }
+
     public var threshold: Float {
         let floor = calN > 0 ? Float(calSum / calN) : 0
         return max(0.015, min(floor, 0.02) * 3)
@@ -34,6 +37,13 @@ public struct EndpointDetector {
         if loud { silence = 0 } else { silence += dt }
         if silence >= endSilence || elapsed >= maxDuration { return .done(hadSpeech: true) }
         return .speaking
+    }
+
+    /// Seconds of the recording loud enough to be speech (20 ms frames).
+    public static func voicedSeconds(_ samples: [Float]) -> Double {
+        var voiced = 0, i = 0
+        while i + 320 <= samples.count { if rms(samples[i..<(i + 320)]) > 0.015 { voiced += 1 }; i += 320 }
+        return Double(voiced) * 0.02
     }
 
     public static func rms(_ s: ArraySlice<Float>) -> Float {
@@ -95,7 +105,15 @@ public enum Speech {
         s = s.trimmingCharacters(in: .whitespacesAndNewlines)
         let t = s.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".!?, "))
         if t.isEmpty || ["you", "thank you", "thanks for watching", "bye", "okay"].contains(t) && s.count < 12 { return "" }
-        return s
+        return fixName(s)
+    }
+
+    /// Speech-to-text often hears the name as "Minecraft" or "Microsoft". When the owner addresses Mycroft
+    /// ("Minecraft, the music hasn't started"), put the name right so it isn't taken as a request about that app.
+    public static func fixName(_ s: String) -> String {
+        let re = try! NSRegularExpression(pattern: #"^(hey,?\s+)?(minecraft|microsoft|my craft|my croft|mike croft|micro?craft|mycraft|mike raft)(?=[,.!?]|\s*$)"#,
+                                          options: .caseInsensitive)
+        return re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: "$1Mycroft")
     }
 
     public enum Answer { case yes, no, unclear }

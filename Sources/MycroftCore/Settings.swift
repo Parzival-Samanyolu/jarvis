@@ -15,6 +15,15 @@ public enum Humour: String, CaseIterable {
         case .off: return "Humour is switched off: no jokes or quips at all. Stay polite, formal and brief."
         }
     }
+    /// The same, for undercover mode's friendly persona.
+    var casualInstruction: String {
+        switch self {
+        case .often: return "Add a light, friendly joke to most replies, after the answer."
+        case .normal: return "A light joke now and then is great; roughly every other reply."
+        case .rare: return "Joke only occasionally. Otherwise be quick and helpful."
+        case .off: return "No jokes: keep it friendly, warm and brief."
+        }
+    }
 }
 
 /// The owner's settings, kept in state.json. Anything unset keeps the original behaviour.
@@ -32,6 +41,8 @@ public enum Settings {
         get { State.get("humour").flatMap(Humour.init(rawValue:)) ?? .normal }
         set { State.set("humour", newValue.rawValue) }
     }
+    /// Undercover mode: an American voice and a friendly, casual persona with no politics.
+    public static var undercover: Bool { get { bool("undercover", false) } set { setBool("undercover", newValue) } }
     public static var followUp: Bool { get { bool("followUp", true) } set { setBool("followUp", newValue) } }
     public static var openingLine: Bool { get { bool("openingLine", true) } set { setBool("openingLine", newValue) } }
     public static var shutdownLine: Bool { get { bool("shutdownLine", true) } set { setBool("shutdownLine", newValue) } }

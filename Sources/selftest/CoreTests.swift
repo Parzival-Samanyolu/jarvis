@@ -26,7 +26,7 @@ func textResp(_ t: String, model: String = "claude-haiku-5-5", usage: [String: A
 }
 
 func runCoreTests() {
-    runRouterTests(); runIntentTests(); runUsageTests(); runMemoryTests(); runBatteryTests(); runAudioTests(); runBatteryPolicyTests(); runNotesTests()
+    runRouterTests(); runIntentTests(); runTimerTests(); runNameFixTests(); runAppsTests(); runUsageTests(); runMemoryTests(); runBatteryTests(); runAudioTests(); runBatteryPolicyTests(); runNotesTests()
     let sem = DispatchSemaphore(value: 0)
     Task { await runBrainTests(); sem.signal() }
     sem.wait()
@@ -62,6 +62,97 @@ func runIntentTests() {
     expectEqual(Intent.parse("Forget that I like jazz."), .forget("like jazz"))
     expectEqual(Intent.parse("Forget that I'm vegetarian"), .forget("am vegetarian"))
     expectEqual(Intent.parse("What's the weather"), .none)
+    // say that again
+    for t in ["Can you say that again?", "Mycroft, repeat that please", "Sorry, what?", "Pardon?", "What did you say?"] {
+        expectEqual(Intent.parse(t), .repeatLast, t)
+    }
+    expectEqual(Intent.parse("Say hello to my sister"), .none)
+    // timers and reminders
+    expectEqual(Intent.parse("Set a timer for 25 minutes"), .timer(seconds: 1500, label: ""))
+    expectEqual(Intent.parse("Mycroft, timer for five minutes."), .timer(seconds: 300, label: ""))
+    expectEqual(Intent.parse("Can you set a timer for 1 hour 30 minutes"), .timer(seconds: 5400, label: ""))
+    expectEqual(Intent.parse("Set a timer for half an hour"), .timer(seconds: 1800, label: ""))
+    expectEqual(Intent.parse("Start a pomodoro"), .timer(seconds: 1500, label: ""))
+    expectEqual(Intent.parse("Remind me in 10 minutes to drink water."), .timer(seconds: 600, label: "drink water"))
+    expectEqual(Intent.parse("Please remind me to call mum in 20 minutes"), .timer(seconds: 1200, label: "call mum"))
+    expectEqual(Intent.parse("Set a reminder in 5 minutes to remove the laundry"), .timer(seconds: 300, label: "remove the laundry"))
+    expectEqual(Intent.parse("Remind me in an hour"), .timer(seconds: 3600, label: "check the time"))
+    expectEqual(Intent.parse("Remind me tomorrow to call the bank"), .none, "no length: the model handles it")
+    expectEqual(Intent.parse("How long is left on my timer?"), .timerStatus)
+    expectEqual(Intent.parse("How much time left?"), .timerStatus)
+    expectEqual(Intent.parse("Cancel the timer"), .cancelTimers)
+    expectEqual(Intent.parse("Stop the timer."), .cancelTimers)
+    expectEqual(Intent.parse("Play some music for 10 minutes"), .none)
+}
+
+func runTimerTests() {
+    expectEqual(Timers.spoken(1500), "25 minutes"); expectEqual(Timers.spoken(1500, plural: false), "25 minute")
+    expectEqual(Timers.spoken(5400), "1 hour and 30 minutes"); expectEqual(Timers.spoken(61), "1 minute and 1 second")
+    expectEqual(Timers.spoken(3600), "1 hour")
+    let t = Timers()
+    let now = Date()
+    expectEqual(t.status(now: now), "There's no timer running, sir.")
+    let a = t.start(seconds: 1500, now: now)
+    t.start(seconds: 600, label: "drink water", now: now)
+    expectEqual(a.announcement, "Sir, your 25 minute timer is up.")
+    expectEqual(t.active.map(\.seconds), [600, 1500], "soonest first")
+    expectEqual(t.status(now: now.addingTimeInterval(60)), "9 minutes until I remind you to drink water, sir. Your 25 minute timer has 24 minutes left, sir.")
+    expectEqual(t.cancelAll(), 2); expectEqual(t.active.count, 0)
+    // a short one fires once, on the main queue
+    var fired: [Timers.Item] = []
+    t.onFire = { fired.append($0) }
+    t.start(seconds: 1, label: "stretch")
+    let until = Date().addingTimeInterval(2.5)
+    while fired.isEmpty && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    expectEqual(fired.map(\.announcement), ["Sir, you asked me to remind you to stretch."])
+    expectEqual(t.active.count, 0, "removed once fired")
+    // saved to disk: a new instance picks up running timers and announces ones that ended while it was closed
+    let file = tmp("timers.json")
+    let saved = Timers(file: file)
+    saved.start(seconds: 600, label: "stretch", now: now)
+    saved.start(seconds: 3600, now: now.addingTimeInterval(-3590))   // ends in 10 s from `now`
+    saved.cancelAll()
+    expectEqual(((try? Data(contentsOf: file)).map { String(decoding: $0, as: UTF8.self) }) ?? "", "[]", "cancel saves")
+    saved.start(seconds: 600, label: "stretch", now: now)
+    saved.start(seconds: 60, label: "missed", now: now.addingTimeInterval(-120))
+    saved.start(seconds: 60, label: "ancient", now: now.addingTimeInterval(-Timers.lateLimit - 600))
+    let back = Timers(file: file)
+    var late: [String] = []
+    back.onFire = { late.append($0.label) }
+    back.restore(now: now)
+    expectEqual(back.active.map(\.label), ["missed", "stretch"], "restored, too-old one dropped")
+    let until2 = Date().addingTimeInterval(1.5)
+    while late.isEmpty && Date() < until2 { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    expectEqual(late, ["missed"], "missed one fires at once")
+    expectEqual(back.active.map(\.label), ["stretch"])
+    back.cancelAll(); saved.cancelAll()
+    // clock times
+    let cal = Calendar(identifier: .gregorian)
+    let four = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 16))!
+    expectEqual(Timers.secondsUntilClockTime(in: "remind me at 6 to eat", now: four, calendar: cal)?.seconds, 2 * 3600, "6 means 6pm at 4pm")
+    expectEqual(Timers.secondsUntilClockTime(in: "remind me at 6am to run", now: four, calendar: cal)?.seconds, 14 * 3600)
+    expectEqual(Timers.secondsUntilClockTime(in: "remind me at 18:30 to call", now: four, calendar: cal)?.seconds, 2 * 3600 + 1800)
+    expectEqual(Timers.secondsUntilClockTime(in: "remind me at 4:15 pm", now: four, calendar: cal)?.seconds, 900)
+    expect(Timers.secondsUntilClockTime(in: "remind me later", now: four, calendar: cal) == nil)
+    expectEqual(Intent.parse("Remind me at 6 to call mum", now: four), .timer(seconds: 7200, label: "call mum"))
+    expectEqual(Intent.parse("Remind me to take my pills at 9 pm", now: four), .timer(seconds: 5 * 3600, label: "take my pills"))
+}
+
+func runNameFixTests() {
+    expectEqual(Speech.clean("Minecraft, the music hasn't started."), "Mycroft, the music hasn't started.")
+    expectEqual(Speech.clean("Hey Microsoft, what time is it?"), "Hey Mycroft, what time is it?")
+    expectEqual(Speech.clean("My craft, open Safari"), "Mycroft, open Safari")
+    expectEqual(Speech.clean("Open Minecraft"), "Open Minecraft", "the app, when asked for")
+    expectEqual(Speech.clean("Microsoft Word is open"), "Microsoft Word is open")
+}
+
+func runAppsTests() {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("apps-\(UUID().uuidString)")
+    for n in ["Safari.app", "Google Chrome.app", "notes.txt", "Chromium.app"] {
+        try? FileManager.default.createDirectory(at: dir.appendingPathComponent(n), withIntermediateDirectories: true)
+    }
+    defer { try? FileManager.default.removeItem(at: dir) }
+    expectEqual(Apps.installed(folders: [dir.path, "/nonexistent"]), ["Chromium", "Google Chrome", "Safari"])
 }
 
 func runUsageTests() {
@@ -305,7 +396,7 @@ func runAudioTests() {
     expect(Speech.keepOrDelete("what") == nil)
 }
 
-// MARK: ML pipelines (wake word, voiceprint) — need the models in ~/Library/Application Support/Mycroft/models
+// MARK: ML pipeline (wake word) — need the models in ~/Library/Application Support/Mycroft/models
 
 func synth(_ text: String, voice: String, rate: Int = 175) -> [Float] {
     let aiff = NSTemporaryDirectory() + "st-\(UUID().uuidString).aiff", wav = aiff + ".wav"
@@ -335,7 +426,7 @@ func wakeScore(_ det: WakeWordDetector, _ audio: [Float]) -> Float {
 }
 
 func runMLTests() {
-    guard Models.wakeWordAvailable, Models.speakerAvailable else { print("SKIP ML tests: models missing"); return }
+    guard Models.wakeWordAvailable else { print("SKIP ML tests: models missing"); return }
     do {
         let det = try WakeWordDetector()
         for v in ["Daniel", "Samantha", "Alex", "Karen"] {
@@ -354,48 +445,6 @@ func runMLTests() {
         for i in stride(from: 0, to: all.count, by: 1280) { if det.feed(Array(all[i..<min(all.count, i + 1280)])) { fires += 1 } }
         expectEqual(fires, 1, "wake fires once")
     } catch { expect(false, "wake word: \(error)") }
-}
-
-func runVoiceprintProbe() {
-    guard Models.speakerAvailable else { return }
-    do {
-        let vp = try Voiceprint(threshold: 0.6)
-        let text1 = "The quick brown fox jumps over the lazy dog while the sun sets slowly behind the mountains in the distance."
-        let text2 = "Please remind me to call my sister tomorrow morning, and tell me what the weather will be like this weekend."
-        var embs: [String: [[Float]]] = [:]
-        for v in ["Daniel", "Samantha", "Alex", "Karen", "Fred"] {
-            embs[v] = [try vp.embedding(synth(text1, voice: v)), try vp.embedding(synth(text2, voice: v))]
-        }
-        for v in embs.keys.sorted() {
-            expect(Cosine.similarity(embs[v]![0], embs[v]![1]) > 0.8, "same voice \(v)")
-        }
-        let names = embs.keys.sorted()
-        for i in 0..<names.count { for j in (i + 1)..<names.count {
-            let sim = Cosine.similarity(embs[names[i]]![0], embs[names[j]]![1])
-            if ![names[i], names[j]].contains("Alex") || ![names[i], names[j]].contains("Samantha") { // Alex voice is not installed here: it falls back to Samantha
-                if ![names[i], names[j]].contains("Karen") || ![names[i], names[j]].contains("Samantha") && ![names[i], names[j]].contains("Alex") { expect(sim < 0.6, "\(names[i]) vs \(names[j]) = \(sim)") }
-            }
-        } }
-        let fast = try vp.embedding(synth(text2, voice: "Daniel", rate: 230))
-        expect(Cosine.similarity(embs["Daniel"]![0], fast) > 0.8, "speed change")
-        // enrol Daniel, then verify: Daniel passes, Fred and Karen are rejected
-        // never touch the real voiceprint.json
-        let file = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("vp-test-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: file) }
-        let tmpVP = try Voiceprint(threshold: 0.6, url: file)
-        try tmpVP.enrol(samples: synth(text1 + " " + text2 + " " + text1, voice: "Daniel"), mic: "Built-in")
-        expect(tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Daniel")), "owner accepted")
-        expect(!tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Fred")), "Fred rejected")
-        expect(!tmpVP.isOwner(synth("Open Safari and play some music please", voice: "Karen")), "Karen rejected")
-        // a second mic adds a voiceprint instead of replacing the first; re-enrolling a mic replaces only that one
-        try tmpVP.enrol(samples: synth(text2 + " " + text1 + " " + text2, voice: "Samantha"), mic: "Headset")
-        try tmpVP.enrol(samples: synth(text2 + " " + text1 + " " + text2, voice: "Samantha"), mic: "Headset")
-        let reloaded = try Voiceprint(url: file)
-        expectEqual(reloaded.enrolledMics, ["Built-in", "Headset"], "one voiceprint per mic, persisted")
-        expect(reloaded.isOwner(synth("Open Safari and play some music please", voice: "Daniel")), "first mic still accepted")
-        expect(reloaded.isOwner(synth("Open Safari and play some music please", voice: "Samantha")), "second mic accepted")
-        expect(!reloaded.isOwner(synth("Open Safari and play some music please", voice: "Fred")), "Fred still rejected")
-    } catch { print("probe error: \(error)") }
 }
 
 func runBatteryPolicyTests() {

@@ -109,3 +109,20 @@ public enum Battery {
         parse((await CommandRunner.execute("pmset -g batt", timeout: 5)).output)
     }
 }
+
+public enum Apps {
+    public static let folders = ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities",
+                          NSHomeDirectory() + "/Applications"]
+
+    /// Names of the installed apps, as `open -a` takes them ("Google Chrome", "Music"). Sorted, so the system
+    /// prompt (and its cache) only changes when an app is installed or removed.
+    public static func installed(folders: [String] = folders) -> [String] {
+        var names = Set<String>()
+        for f in folders {
+            for item in (try? FileManager.default.contentsOfDirectory(atPath: f)) ?? [] where item.hasSuffix(".app") {
+                names.insert(String(item.dropLast(4)))
+            }
+        }
+        return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+}

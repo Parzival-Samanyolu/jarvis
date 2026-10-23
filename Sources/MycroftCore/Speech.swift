@@ -13,7 +13,7 @@ public final class Speaker {
     public var onSpeakingChanged: ((Bool) -> Void)?
 
     public init() {
-        _voice = Self.pickVoice(installed: Self.installed(), chosen: Settings.voice)
+        _voice = Self.voiceForMode()
         _rate = Settings.rate
     }
 
@@ -40,6 +40,21 @@ public final class Speaker {
             if let v = british.first(where: { $0.contains(tier) }) { return v }
         }
         return british.first { $0.hasPrefix("Daniel") } ?? "Daniel"
+    }
+
+    /// Undercover mode's voice: a Premium US voice if installed, then Evan (Enhanced), then any Enhanced US voice,
+    /// then Samantha.
+    public static func pickAmerican(installed: [(name: String, locale: String)]) -> String {
+        let us = installed.filter { $0.locale == "en_US" }.map(\.name)
+        if let v = us.first(where: { $0.contains("(Premium)") }) { return v }
+        if let v = us.first(where: { $0 == "Evan (Enhanced)" }) { return v }
+        if let v = us.first(where: { $0.contains("(Enhanced)") }) { return v }
+        return us.first { $0.hasPrefix("Samantha") } ?? "Samantha"
+    }
+
+    /// The voice for the current mode.
+    public static func voiceForMode(installed: [(name: String, locale: String)] = installed()) -> String {
+        Settings.undercover ? pickAmerican(installed: installed) : pickVoice(installed: installed, chosen: Settings.voice)
     }
 
     static func run(_ exe: String, _ args: [String]) -> String {

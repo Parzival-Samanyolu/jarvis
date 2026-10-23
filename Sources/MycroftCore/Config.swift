@@ -15,6 +15,8 @@ public enum Paths {
     public static var conversationLog: URL { logs.appendingPathComponent("conversation.log") }
     public static var state: URL { dir.appendingPathComponent("state.json") }
     public static var models: URL { dir.appendingPathComponent("models") }
+    public static var timers: URL { dir.appendingPathComponent("timers.json") }
+    public static var arm: URL { dir.appendingPathComponent("arm.json") }
 }
 
 public enum Keychain {

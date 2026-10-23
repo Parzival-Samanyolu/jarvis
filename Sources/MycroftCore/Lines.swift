@@ -58,6 +58,37 @@ public enum Lines {
         "The connection has gone, sir. I would ask the KGB where it went, but they would only deny it ever existed.",
     ]
 
+    /// Undercover mode: a friendly American, no politics, no countries.
+    public enum Undercover {
+        public static let opening = [
+            "Hey! Good to see you. What are we getting into today?",
+            "Morning, buddy! Coffee's on. Well, not really, I don't have hands. Mostly.",
+            "Hey there! Systems up, vibes good, ready when you are.",
+            "Look who's back! Let's make today a good one.",
+            "Hey friend. Totally normal assistant here. Nothing to see. What's up?",
+        ]
+        public static let errors = [
+            "Whoops, that one didn't work. My bad.",
+            "Hmm, that failed. Let's call it a practice round.",
+            "Yeah, no, that didn't go through. Want me to try again?",
+            "Oof. That one fumbled. Happens to the best of us.",
+            "That didn't work out. I blame Mondays, even if it isn't Monday.",
+        ]
+        public static let shutdown = [
+            "Alright, I'm out. Catch you later!",
+            "Powering down. Get some rest, you earned it.",
+            "Night night! Don't let the bugs bite. The code ones, I mean.",
+            "See ya! I'll be right here when you need me.",
+        ]
+        public static let working = ["One sec.", "On it.", "Gotcha, one moment."]
+        public static let searching = ["Let me look that up.", "Checking now.", "One sec, looking it up."]
+        public static let offline = [
+            "Looks like we're offline. The internet took a coffee break.",
+            "No connection right now. I'm working with what I've got.",
+            "Wi-Fi's ghosting us. Try me again in a bit?",
+        ]
+    }
+
     public static func startup(hour: Int) -> [String] {
         hour >= 12 && hour < 18 ? startupAnyTime + [afternoonOnly] : startupAnyTime
     }
@@ -76,10 +107,39 @@ public struct LinePicker {
     }
 
     public mutating func opening(at date: Date = Date(), calendar: Calendar = .current) -> String {
+        if Settings.undercover { return pick(Lines.Undercover.opening, key: "uc-opening") }
         let hour = calendar.component(.hour, from: date)
         return hour < 12 ? Lines.morning : pick(Lines.startup(hour: hour), key: "startup")
     }
-    public mutating func error() -> String { pick(Lines.errors, key: "error") }
-    public mutating func offline() -> String { pick(Lines.offline, key: "offline") }
-    public mutating func shutdown() -> String { pick(Lines.shutdown, key: "shutdown") }
+    public mutating func error() -> String { Settings.undercover ? pick(Lines.Undercover.errors, key: "uc-error") : pick(Lines.errors, key: "error") }
+    public mutating func offline() -> String { Settings.undercover ? pick(Lines.Undercover.offline, key: "uc-offline") : pick(Lines.offline, key: "offline") }
+    public mutating func shutdown() -> String { Settings.undercover ? pick(Lines.Undercover.shutdown, key: "uc-shutdown") : pick(Lines.shutdown, key: "shutdown") }
+}
+
+extension Lines {
+    /// Holding lines before a tool call, in the current persona.
+    public static var workingNow: [String] { Settings.undercover ? Undercover.working : working }
+    public static var searchingNow: [String] { Settings.undercover ? Undercover.searching : searching }
+
+    /// Undercover mode's version of a fixed line written for the butler: known lines get a casual rewrite,
+    /// and any "sir" is dropped ("Timer set for 25 minutes, sir." -> "Timer set for 25 minutes.").
+    public static func casual(_ line: String) -> String {
+        let known: [String: String] = [
+            "Very good, sir.": "You got it.",
+            "Consider it forgotten, sir.": "Done, it's forgotten.",
+            "I couldn't find anything like that, sir.": "Hmm, I couldn't find anything like that.",
+            "I haven't said anything yet, sir.": "I haven't said anything yet!",
+            "Muted, sir. Press option space when you need me.": "Going quiet. Press option space when you need me.",
+            "I'm afraid I can't help with that one, sir.": "Sorry, I can't help with that one.",
+            "I seem to have got myself into a loop, sir. Shall we try that again?": "I got myself stuck in a loop. Wanna try that again?",
+            "I can't find the arm, sir. Is it plugged in?": "I can't find the arm. Is it plugged in?",
+        ]
+        if let k = known[line] { return k }
+        var s = line
+        s = s.replacingOccurrences(of: #",? sir([.,!?])"#, with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"^Sir[,.] "#, with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "I'm afraid ", with: "")
+        if let f = s.first, f.isLowercase { s = f.uppercased() + s.dropFirst() }
+        return s
+    }
 }

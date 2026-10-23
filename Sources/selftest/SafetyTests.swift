@@ -6,7 +6,8 @@ let checker = SafetyChecker(home: "/Users/test", exists: { ["/Users/test/a.txt",
 func runSafetyTests() {
     for cmd in ["ls ~/Downloads", "open -a Safari", "osascript -e 'set volume output volume 30'",
                 "echo hi > ~/note.txt", "mkdir ~/newdir", "cat ~/a.txt | wc -l", "cp ~/a.txt ~/b.txt",
-                "date", "curl -s https://example.com", "echo x > /dev/null", "mv ~/a.txt ~/docs/", "echo 'a; rm b'"] {
+                "date", "curl -s https://example.com", "echo x > /dev/null", "mv ~/a.txt ~/docs/", "echo 'a; rm b'",
+                "pmset -g batt", "osascript -e 'tell application \"Music\" to play'"] {
         expectEqual(checker.classify(cmd), .safe, cmd)
     }
     for cmd in ["rm -rf ~/x", "sudo ls", "ls; rm foo", "echo hi && kill 123", "killall Dock", "chmod 777 file",
@@ -15,7 +16,10 @@ func runSafetyTests() {
                 "mv ~/a.txt ~/docs", "mv ~/b ~/../other", "sed -i '' s/a/b/ ~/f", "bash -c 'rm x'",
                 "osascript -e 'do shell script \"ls\" with administrator privileges'", "defaults write com.apple.dock x -int 1",
                 "FOO=1 rm x", "nohup rm x", "mkdir /opt/foo", "tee /usr/local/x", "eval \"$X\"", "launchctl unload x",
-                "echo hi >> /var/log/x", "cd /tmp && rm -f *"] {
+                "echo hi >> /var/log/x", "cd /tmp && rm -f *",
+                "pmset sleepnow", "pmset displaysleepnow", "osascript -e 'tell application \"System Events\" to shut down'",
+                "osascript -e 'tell app \"System Events\" to restart'", "osascript -e 'tell application \"System Events\" to sleep'",
+                "osascript -e 'tell application \"System Events\" to log out'", "osascript -e 'tell app \"loginwindow\" to «event aevtrsdn»'"] {
         expect(checker.classify(cmd).isRisky, cmd)
     }
 }

@@ -27,7 +27,7 @@ final class SettingsModel: ObservableObject {
     let voices: [String]
     static let sample = "Very good, sir. Something has failed, and I shall blame the French, as is tradition."
 
-    @Published var voice: String { didSet { Settings.voice = voice; app?.speaker.voice = voice } }
+    @Published var voice: String { didSet { Settings.voice = voice; if !Settings.undercover { app?.speaker.voice = voice } } }
     @Published var customRate: Bool { didSet { applyRate() } }
     @Published var rate: Double { didSet { applyRate() } }
     @Published var humour: Humour { didSet { Settings.humour = humour } }

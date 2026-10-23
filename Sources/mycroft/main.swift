@@ -131,7 +131,7 @@ if args.contains("--set-key") {
     print("Paste Anthropic API key: ", terminator: "")
     if let k = readLine(), !k.isEmpty { print(Keychain.setAPIKey(k.trimmingCharacters(in: .whitespaces)) ? "Stored in Keychain." : "Keychain write failed.") }
 } else if let i = args.firstIndex(of: "--test-record") {
-    // Diagnostic: same path as enrolment (speak, then a fixed-length recording) on the current mic.
+    // Diagnostic: speak, then a fixed-length recording on the current mic.
     let secs = i + 1 < args.count ? Double(args[i + 1]) ?? 5 : 5
     Task { @MainActor in
         print("mic: \(Recorder.currentMicName)")
@@ -143,7 +143,7 @@ if args.contains("--set-key") {
         let samples = WAV.decode((try? Data(contentsOf: wav)) ?? Data())
         try? FileManager.default.removeItem(at: wav)
         let rms = EndpointDetector.rms(samples[...])
-        print(String(format: "RESULT: %.1fs of audio in %.1fs, rms %.4f, voiced %.1fs", Double(samples.count) / 16000, Date().timeIntervalSince(start), rms, Voiceprint.voicedSeconds(samples)))
+        print(String(format: "RESULT: %.1fs of audio in %.1fs, rms %.4f, voiced %.1fs", Double(samples.count) / 16000, Date().timeIntervalSince(start), rms, EndpointDetector.voicedSeconds(samples)))
         exit(0)
     }
     dispatchMain()

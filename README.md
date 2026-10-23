@@ -5,7 +5,7 @@ A voice assistant for the M1 MacBook Air: answers questions, runs terminal comma
 ## Quick start
 
 ```sh
-brew install whisper-cpp onnxruntime        # speech-to-text, wake word and voiceprint runtime
+brew install whisper-cpp onnxruntime        # speech-to-text and wake-word runtime
 scripts/setup-whisper.sh                     # fetches the whisper base.en model
 swift run mycroft --set-key                   # stores the Anthropic key in the Keychain (or export ANTHROPIC_API_KEY)
 swift run mycroft --cli                       # terminal chat (add --speak to hear it)
@@ -29,14 +29,15 @@ scripts/install.sh                           # builds, installs /Applications/My
 
 ## Layout
 
-- `Sources/MycroftCore/` — everything testable: `Brain` (Messages API over `URLSession`, tool loop), `Models` (router, intents), `Usage` ($80 cap), `Safety`, `Secrets`, `Tools` (run_command, screen, battery), `Memory`, `Notes`, `Speech`, `Audio` (VAD, WAV), `Voiceprint`, `WakeWord`, `Onnx`, `Prompts`.
+- `Sources/MycroftCore/` — everything testable: `Brain` (Messages API over `URLSession`, tool loop), `Models` (router, intents), `Usage` ($80 cap), `Safety`, `Secrets`, `Tools` (run_command, screen, battery, installed apps), `Memory`, `Notes`, `Speech`, `Audio` (VAD, WAV), `Timers`, `WakeWord`, `Onnx`, `Prompts`.
 - `Sources/COrt/` — C shim over the onnxruntime C API.
 - `Sources/mycroft/` — the app: `App` (menu bar, state machine), `Audio` (recorder, wake listener, whisper), `Hotkey`, `main` (`--cli`, `--set-key`).
-- `Sources/selftest/` — test runner (`swift run selftest`, `--ml` adds the wake-word and voiceprint tests).
+- `arm/` — Arduino sketch for the robotic arm (see `arm/README.md`); `MycroftCore/Arm.swift` drives it over USB serial.
+- `Sources/selftest/` — test runner (`swift run selftest`, `--ml` adds the wake-word tests).
 - Prompts are in `Prompts.swift` rather than a `prompts/` folder.
 
 
 
 ## Usage
 
-⌥ Space starts listening; pressing it again stops Mycroft mid-answer. Or say "Hey Mycroft". There is no voice recognition: Mycroft answers anyone it hears. Voice commands: "use Opus", "how much have I spent", "what do you know about me", "forget that I…", "mute", "stop".
+⌥ Space starts listening; pressing it again stops Mycroft mid-answer. Or say "Hey Mycroft", which also cuts Mycroft short while it is talking. There is no voice recognition: Mycroft answers anyone it hears. Voice commands: "use Opus", "how much have I spent", "what do you know about me", "forget that I…", "mute", "stop", "say that again" (replays the last reply for free), "set a timer for 25 minutes", "pomodoro", "remind me in 10 minutes to stretch", "remind me at 6 to call mum", "how long is left", "cancel the timer", "go undercover" / "blow your cover" (undercover mode: American voice, friendly, no politics; also in the menu). These run on the Mac without a model call, offline too.

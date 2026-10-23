@@ -52,15 +52,20 @@ final class Recorder {
     /// Returns a WAV file URL, or nil if nobody spoke before the timeout (or it was cancelled, or the mic kept failing).
     /// With `fixed` set, records exactly that many seconds and ignores silence.
     /// `onAudio` sees every chunk as it arrives (on the audio thread), for live transcription.
-    func record(startTimeout: TimeInterval, fixed: TimeInterval? = nil, onAudio: (([Float]) -> Void)? = nil) async -> URL? {
+    /// `preroll` is called once, when the mic delivers its first audio, and returns what was heard before the
+    /// recording began (the words right after the wake word); it goes in front of the recording.
+    func record(startTimeout: TimeInterval, fixed: TimeInterval? = nil, onAudio: (([Float]) -> Void)? = nil,
+                preroll: (() -> [Float])? = nil) async -> URL? {
         lock.withLock { cancelFlag = false; onCancel = nil }
         return await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
             final class State {
                 var detector: EndpointDetector; var samples: [Float] = []; var frame: [Float] = []; var done = false
                 var engine: AVAudioEngine?; var observer: NSObjectProtocol?; var restarts = 0
+                var preroll: (() -> [Float])?; var preFrames: [Float] = []
                 init(_ t: TimeInterval) { detector = EndpointDetector(startTimeout: t); detector.endSilence = Settings.endSilence }
             }
             let st = State(startTimeout)
+            st.preroll = preroll
             let frameLen = 16000 * EndpointDetector.frameMs / 1000
 
             func teardown() {
@@ -89,6 +94,12 @@ final class Recorder {
                 input.installTap(onBus: 0, bufferSize: 2048, format: rs.inFmt) { [weak self] buf, _ in
                     guard let self, !st.done else { return }
                     if self.cancelled { finish(hadSpeech: false); return }
+                    if let take = st.preroll {
+                        st.preroll = nil
+                        let pre = take()
+                        st.samples.append(contentsOf: pre); onAudio?(pre)
+                        st.preFrames = pre.count >= frameLen ? pre : []
+                    }
                     let chunk = rs.convert(buf)
                     st.samples.append(contentsOf: chunk)
                     onAudio?(chunk)
@@ -101,6 +112,16 @@ final class Recorder {
                         let rms = EndpointDetector.rms(st.frame[0..<frameLen])
                         st.frame.removeFirst(frameLen)
                         if case .done(let had) = st.detector.feed(rms: rms) { finish(hadSpeech: had); return }
+                    }
+                    // The pre-roll counts as speech only once the noise floor has been measured on live audio,
+                    // so words in it can't raise the floor.
+                    if !st.preFrames.isEmpty, !st.detector.isCalibrating {
+                        var i = 0
+                        while i + frameLen <= st.preFrames.count {
+                            let rms = EndpointDetector.rms(st.preFrames[i..<(i + frameLen)]); i += frameLen
+                            if case .done(let had) = st.detector.feed(rms: rms) { finish(hadSpeech: had); return }
+                        }
+                        st.preFrames = []
                     }
                 }
                 // Device changes stop the engine: a headset connecting, or a Bluetooth headset switching to
@@ -135,6 +156,11 @@ final class WakeListener {
     private let queue = DispatchQueue(label: "mycroft.wake")
     private let detector: WakeWordDetector
     private(set) var running = false
+    /// After the wake word, audio is kept here (instead of being searched for the wake word) until the recorder
+    /// takes it, so words said straight after "Hey Mycroft" aren't lost while the recorder's mic opens.
+    private var tail: [Float] = []
+    private var capturing = false   // both only touched on `queue`
+    static let maxTail = 16000 * 4
     var onWake: (() -> Void)?
     /// Called after the input device changes; the app restarts listening if it is still idle.
     var onDeviceChange: (() -> Void)?
@@ -145,15 +171,23 @@ final class WakeListener {
     }
 
     func start() {
-        guard !running else { return }
+        guard !running else { queue.sync { capturing = false; tail = [] }; return }
         let engine = AVAudioEngine()
         guard let rs = Resampler(from: engine.inputNode.outputFormat(forBus: 0)) else { return }
-        queue.sync { detector.reset() }
+        queue.sync { detector.reset(); capturing = false; tail = [] }
         engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: rs.inFmt) { [weak self] buf, _ in
             let samples = rs.convert(buf)
             self?.queue.async {
                 guard let self, self.running else { return }
-                if self.detector.feed(samples) { DispatchQueue.main.async { self.onWake?() } }
+                if self.capturing {
+                    self.tail.append(contentsOf: samples)
+                    if self.tail.count > Self.maxTail { self.tail.removeFirst(self.tail.count - Self.maxTail) }
+                    return
+                }
+                if self.detector.feed(samples) {
+                    self.capturing = true; self.tail = []
+                    DispatchQueue.main.async { self.onWake?() }
+                }
             }
         }
         do { engine.prepare(); try engine.start() } catch { engine.inputNode.removeTap(onBus: 0); return }
@@ -165,6 +199,14 @@ final class WakeListener {
             self.stop()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.onDeviceChange?() }
         }
+    }
+
+    /// True between the wake word and the recorder taking the audio; the listener keeps running meanwhile.
+    var isHandingOver: Bool { queue.sync { running && capturing } }
+
+    /// What was heard since the wake word, and back to listening for it. Safe from any thread except `queue`.
+    func takeTail() -> [Float] {
+        queue.sync { capturing = false; defer { tail = [] }; return tail }
     }
 
     func stop() {
