@@ -227,17 +227,29 @@ final class Transcriber {
 
     /// Set once Apple's transcriber is ready (its model is downloaded on first launch).
     private(set) var appleLocale: Locale?
+    /// Turkish, for Pasha mode: Apple's dictation model, fetched the first time the Pasha is chosen.
+    private(set) var turkishLocale: Locale?
     var available: Bool { appleLocale != nil || Self.whisperAvailable }
 
     func prepare() async {
         if #available(macOS 26, *) { appleLocale = await LiveTranscriber.prepare() }
         NSLog("Mycroft: speech-to-text is %@", appleLocale.map { "Apple (\($0.identifier))" } ?? (Self.whisperAvailable ? "Whisper" : "missing"))
+        await prepareTurkish()
+    }
+
+    /// Readies Turkish if the Pasha is on (and once ready, keeps it).
+    func prepareTurkish() async {
+        guard Settings.persona == .pasha, turkishLocale == nil else { return }
+        if #available(macOS 26, *) { turkishLocale = await LiveTranscriber.prepareDictation(Locale(identifier: "tr-TR")) }
+        NSLog("Mycroft: Turkish speech-to-text is %@", turkishLocale == nil ? "missing" : "ready")
     }
 
     /// A live session to feed while recording, or nil to use Whisper on the finished recording.
     func begin() -> LiveSession? {
-        guard let appleLocale else { return nil }
-        if #available(macOS 26, *) { return LiveSession(LiveTranscriber(locale: appleLocale)) }
+        if #available(macOS 26, *) {
+            if Settings.persona == .pasha, let turkishLocale { return LiveSession(LiveTranscriber(locale: turkishLocale, dictation: true)) }
+            if let appleLocale { return LiveSession(LiveTranscriber(locale: appleLocale)) }
+        }
         return nil
     }
 

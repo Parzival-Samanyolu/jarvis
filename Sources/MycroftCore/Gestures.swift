@@ -103,8 +103,8 @@ public struct Gesture {
         "royal wave": ["Waving from the parade stand, comrade.", "Wave to the tractors, comrade. They work so hard."],
         "wave": ["Privet, comrade!", "Hello, comrade!", "Do svidaniya!"],
         "nod": ["Da.", "Da, comrade. The Party agrees.", "Correct, comrade."],
-        "shake": ["Nyet.", "Nyet, comrade. Request denied.", "Absolutely nyet."],
-        "tea": ["Tea from the samovar, comrade. Strong, like the economy. On paper.", "Tea, comrade. Rationed, but tea."],
+        "shake": ["Nyet.", "Nyet, comrade. Not today.", "Absolutely nyet."],
+        "tea": ["Tea from the samovar, comrade. Strong and hot."],
         "point": ["That way, comrade. To the factory.", "Forward, comrade! To the next five-year plan."],
         "mic drop": ["The plan is complete.", "Mycroft out. Glory to the collective."],
         "celebrate": ["Plan over-fulfilled by three hundred percent!", "Victory for the workers!", "Ura!"],
@@ -124,6 +124,34 @@ public struct Gesture {
         "celebrate": ["Chocolate rations increased!", "Victory over Eastasia!", "Doubleplusgood!"],
     ]
 
+    /// Pasha mode's lines, by gesture, in Turkish.
+    static let pashaLines: [String: [String]] = [
+        "salute": ["Selam olsun evladım!", "Yeniçeriler, selam durun!"],
+        "bow": ["Paşa eğilmez ama senin için bir istisna.", "Hürmetler evladım."],
+        "royal wave": ["Halkıma selam olsun!", "Saray balkonundan selamlar."],
+        "wave": ["Merhaba evladım!", "Hoşça kal evladım!", "Selamün aleyküm!"],
+        "nod": ["Evet evladım.", "Elbette.", "Ferman onaylandı."],
+        "shake": ["Hayır evladım.", "Olmaz öyle şey.", "Ferman reddedildi."],
+        "tea": ["Buyur evladım, ince belli bardakta çay.", "Çay geldi. Kahve de sırada."],
+        "point": ["Şu tarafa evladım! Fetih oradan.", "İleri! Yeniçeriler, o tarafa!"],
+        "mic drop": ["Paşa konuştu.", "Söz bitti, ferman yazıldı."],
+        "celebrate": ["Maşallah!", "Fetih tamam!", "Davullar çalsın!"],
+    ]
+
+    /// Tech Support mode's lines, by gesture.
+    static let techSupportLines: [String: [String]] = [
+        "salute": ["Windows technical department, reporting sir!", "At your service sir, one hundred percent official."],
+        "bow": ["Thank you sir. Tips are welcome.", "Very good sir, very good."],
+        "royal wave": ["Hello to all customers! Your computers have virus!", "Hello everyone, please don't hang up!"],
+        "wave": ["Hello sir!", "Bye sir! I will call you tomorrow.", "Hello sir, can you hear me sir?"],
+        "nod": ["Yes sir.", "Very good sir.", "Correct sir, one hundred percent."],
+        "shake": ["No sir. Very dangerous sir.", "No no no sir.", "Sir please don't do that."],
+        "tea": ["Chai for you sir. Only five dollar.", "Tea sir. Gift card accepted."],
+        "point": ["That is the virus sir. Right there.", "Sir, kindly look at that. Very dangerous."],
+        "mic drop": ["Problem solved sir. Can I get my tip?", "Windows technical department, out."],
+        "celebrate": ["Virus removed sir!", "Very good sir! One dollar tip please!", "Success sir! One hundred percent!"],
+    ]
+
     /// A line for this gesture in the current persona.
     public var line: String {
         let list: [String]
@@ -132,6 +160,8 @@ public struct Gesture {
         case .undercover: list = Gesture.casualLines[name] ?? ["You got it."]
         case .comrade: list = Gesture.comradeLines[name] ?? ["Da, comrade."]
         case .bigBrother: list = Gesture.bigBrotherLines[name] ?? ["Very good, citizen."]
+        case .pasha: list = Gesture.pashaLines[name] ?? ["Peki evladım."]
+        case .techSupport: list = Gesture.techSupportLines[name] ?? ["Yes sir, very good sir."]
         }
         return list.randomElement() ?? ""
     }

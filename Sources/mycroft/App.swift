@@ -131,8 +131,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
 
     func render() {
         guard statusItem != nil else { return }
-        // Undercover, the butler hides behind sunglasses; Comrade wears a star, Big Brother is an eye.
-        let costume: String? = [.undercover: "sunglasses", .comrade: "star.fill", .bigBrother: "eye"][Settings.persona]
+        // Undercover, the butler hides behind sunglasses; the other personas have their own badge.
+        let costume: String? = [.undercover: "sunglasses", .comrade: "star.fill", .bigBrother: "eye", .pasha: "moon.stars.fill", .techSupport: "headphones"][Settings.persona]
         let idle = costume.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: "Mycroft Idle (\(Settings.persona.label))") } ?? ButlerGlyph.image
         let img = state == .idle ? idle : NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
         statusItem.button?.image = img
@@ -169,6 +169,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         case .undercover: await say("Undercover mode on. Hey! Just a regular, totally normal guy here.")
         case .comrade: await say("Comrade mode. Greetings, comrade. The Party has assigned me to you. Da.")
         case .bigBrother: await say("Attention, citizen. The telescreen is now on. Big Brother is watching you.")
+        case .pasha:
+            await say("Paşa geldi evladım. Artık Türkçe konuşuyoruz.")
+            await transcriber.prepareTurkish()   // the Turkish dictation model downloads the first time
+        case .techSupport: await say("Hello sir, I am calling from Windows technical department. Please don't hang up.")
         case .butler:
             await say(was == .undercover ? "Undercover mode off. Good to be back, sir. That accent was exhausting."
                                          : "Back to normal, sir. I've returned the uniform. It never suited me.")
@@ -413,7 +417,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             Task { @MainActor in
                 self.confirmCont = cont
                 self.state = .confirming
-                await self.speaker.speak(Settings.undercover ? "\(description). Want me to go ahead?" : Lines.inPersona("\(description). Shall I proceed, sir?"))
+                await self.speaker.speak(Settings.undercover ? "\(description). Want me to go ahead?" : Settings.persona == .pasha ? "\(description). Devam edeyim mi evladım?" : Lines.inPersona("\(description). Shall I proceed, sir?"))
                 guard self.confirmCont != nil else { return }
                 let heard = await self.hear(startTimeout: 6)
                 guard self.confirmCont != nil else { return }

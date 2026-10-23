@@ -14,10 +14,11 @@ public final class LiveTranscriber: @unchecked Sendable {
     private let task: Task<String, Error>
 
     /// Starts loading at once; audio fed before it is ready waits in a queue, so the mic never waits for it.
-    public init(locale: Locale) {
+    /// `dictation` uses Apple's dictation model instead, which knows more languages (Turkish, for Pasha mode).
+    public init(locale: Locale, dictation: Bool = false) {
         let (stream, cont) = AsyncStream<[Float]>.makeStream()
         raw = cont
-        task = Task { try await Self.run(locale: locale, audio: stream) }
+        task = Task { try await Self.run(locale: locale, dictation: dictation, audio: stream) }
     }
 
     /// 16 kHz mono samples, from any thread.
@@ -48,10 +49,33 @@ public final class LiveTranscriber: @unchecked Sendable {
         return locale
     }
 
-    private static func run(locale: Locale, audio: AsyncStream<[Float]>) async throws -> String {
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
-        let analyzer = SpeechAnalyzer(modules: [transcriber])
-        let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) ?? sourceFormat
+    /// The same for the dictation model, for languages the transcriber lacks (Turkish).
+    public static func prepareDictation(_ preferred: Locale) async -> Locale? {
+        guard let locale = await DictationTranscriber.supportedLocale(equivalentTo: preferred) else { return nil }
+        let installed = await DictationTranscriber.installedLocales.map { $0.identifier(.bcp47) }
+        if !installed.contains(locale.identifier(.bcp47)) {
+            do {
+                try await AssetInventory.assetInstallationRequest(supporting: [DictationTranscriber(locale: locale, preset: .shortDictation)])?.downloadAndInstall()
+            } catch {
+                NSLog("Mycroft: dictation model download failed: %@", "\(error)")
+                return nil
+            }
+        }
+        return locale
+    }
+
+    private static func run(locale: Locale, dictation: Bool, audio: AsyncStream<[Float]>) async throws -> String {
+        let module: any SpeechModule
+        let results: AsyncThrowingStream<String, Error>
+        if dictation {
+            let t = DictationTranscriber(locale: locale, preset: .shortDictation)
+            module = t; results = texts(t.results.map { String($0.text.characters) })
+        } else {
+            let t = SpeechTranscriber(locale: locale, preset: .transcription)
+            module = t; results = texts(t.results.map { String($0.text.characters) })
+        }
+        let analyzer = SpeechAnalyzer(modules: [module])
+        let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module]) ?? sourceFormat
         let converter = format == sourceFormat ? nil : AVAudioConverter(from: sourceFormat, to: format)
         let context = AnalysisContext()
         context.contextualStrings[.general] = hints
@@ -67,13 +91,20 @@ public final class LiveTranscriber: @unchecked Sendable {
         }
         let collect = Task {
             var text = ""
-            for try await r in transcriber.results { text += String(r.text.characters) }
+            for try await r in results { text += r }
             return text
         }
         try await analyzer.start(inputSequence: inputs)
         await pump.value
         try await analyzer.finalizeAndFinishThroughEndOfInput()
         return try await collect.value
+    }
+
+    private static func texts<S: AsyncSequence & Sendable>(_ seq: S) -> AsyncThrowingStream<String, Error> where S.Element == String {
+        AsyncThrowingStream { cont in
+            let t = Task { do { for try await x in seq { cont.yield(x) }; cont.finish() } catch { cont.finish(throwing: error) } }
+            cont.onTermination = { _ in t.cancel() }
+        }
     }
 
     private static func convert(_ samples: [Float], to format: AVAudioFormat, with converter: AVAudioConverter?) -> AVAudioPCMBuffer? {

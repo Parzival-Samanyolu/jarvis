@@ -11,6 +11,7 @@ func expectEqual<T: Equatable>(_ a: T, _ b: T, _ msg: String = "", line: Int = #
     if a == b { passes += 1 } else { failures += 1; print("FAIL line \(line): \(a) != \(b) \(msg)") }
 }
 
+Settings.personaOverride = .butler   // the line tests expect the butler, whatever the app is set to
 runSafetyTests()
 runSecretTests()
 runCoreTests()

@@ -47,7 +47,7 @@ func runUndercoverTests() {
     expectEqual(Lines.inPersona("A desire to serve.", .comrade), "A desire to serve.", "only whole words")
     for p in Persona.allCases { expectEqual(Persona(rawValue: p.rawValue), p) }
     expect(Prompts.comrade.contains("comrade") && Prompts.bigBrother.contains("citizen"))
-    expect(Prompts.bigBrother.contains("Nineteen Eighty-Four") && Prompts.comrade.contains("KGB"))
+    expect(Prompts.bigBrother.contains("Nineteen Eighty-Four") && Prompts.comrade.contains("Gagarin"))
     for list in [Lines.Comrade.opening, Lines.Comrade.errors, Lines.Comrade.shutdown, Lines.Comrade.offline, Lines.Comrade.working, Lines.Comrade.searching,
                  Lines.BigBrother.opening, Lines.BigBrother.errors, Lines.BigBrother.shutdown, Lines.BigBrother.offline, Lines.BigBrother.working, Lines.BigBrother.searching] {
         expect(list.count >= 3)
@@ -55,5 +55,18 @@ func runUndercoverTests() {
     }
     expectEqual(Set(Gesture.comradeLines.keys), Set(Gesture.all.map(\.name)), "every gesture has comrade lines")
     expectEqual(Set(Gesture.bigBrotherLines.keys), Set(Gesture.all.map(\.name)), "every gesture has Big Brother lines")
-    expectEqual(Lines.forPersona("b", "u", "c", "x", .comrade), "c")
+    expectEqual(Lines.forPersona("b", "u", "c", "x", "p", "m", .comrade), "c")
+    expectEqual(Lines.inPersona("Very good, sir.", .pasha), "Peki evladım.")
+    expectEqual(Lines.inPersona("Sir, your 25 minute timer is up.", .pasha), "Evladım, zamanlayıcın doldu.")
+    expectEqual(Lines.inPersona("Sir, you asked me to remind you to drink water.", .pasha), "Evladım, bana şunu hatırlatmamı istemiştin: drink water")
+    expectEqual(Lines.inPersona("Timer set, sir.", .techSupport), "Timer set, sir.")
+    expect(Prompts.pasha.contains("Always reply in Turkish") && Prompts.techSupport.contains("gift card"))
+    for list in [Lines.Pasha.opening, Lines.Pasha.errors, Lines.Pasha.shutdown, Lines.Pasha.offline,
+                 Lines.TechSupport.opening, Lines.TechSupport.errors, Lines.TechSupport.shutdown, Lines.TechSupport.offline] {
+        expect(list.count >= 3)
+    }
+    expectEqual(Set(Gesture.pashaLines.keys), Set(Gesture.all.map(\.name)), "every gesture has Pasha lines")
+    expectEqual(Set(Gesture.techSupportLines.keys), Set(Gesture.all.map(\.name)), "every gesture has Tech Support lines")
+    expectEqual(Speech.yesNo("Evet, devam et"), .yes)
+    expectEqual(Speech.yesNo("Hayır"), .no)
 }

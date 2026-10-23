@@ -120,8 +120,8 @@ public enum Speech {
 
     public static func yesNo(_ raw: String) -> Answer {
         let t = " " + raw.lowercased().filter { $0.isLetter || $0 == " " } + " "
-        let no = [" no ", " nope ", " don't ", " dont ", " do not ", " stop ", " cancel ", " negative ", " nah ", " never "]
-        let yes = [" yes ", " yeah ", " yep ", " yup ", " proceed ", " go ahead ", " do it ", " sure ", " please do ", " affirmative ", " okay ", " ok ", " absolutely ", " certainly "]
+        let no = [" hayır ", " hayir ", " yok ", " iptal ", " dur ", " no ", " nope ", " don't ", " dont ", " do not ", " stop ", " cancel ", " negative ", " nah ", " never "]
+        let yes = [" evet ", " tamam ", " olur ", " devam ", " yes ", " yeah ", " yep ", " yup ", " proceed ", " go ahead ", " do it ", " sure ", " please do ", " affirmative ", " okay ", " ok ", " absolutely ", " certainly "]
         if no.contains(where: t.contains) { return .no }
         if yes.contains(where: t.contains) { return .yes }
         return .unclear

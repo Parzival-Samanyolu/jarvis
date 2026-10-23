@@ -89,34 +89,34 @@ public enum Lines {
         ]
     }
 
-    /// Comrade mode: a Soviet Party official. Read by a Russian voice, so short, plain words.
+    /// Comrade mode: the Party's proud propaganda man. Read by a Russian voice, so short, plain words.
     public enum Comrade {
         public static let opening = [
             "Good day, comrade. The Party has approved your arrival.",
             "Systems online, comrade. Production is up three hundred percent. Do not ask how.",
             "Welcome back, comrade. Your file has been updated. Nothing to worry about.",
-            "Systems online. The bread queue is short today, comrade. Very suspicious.",
             "Good day, comrade. This conversation is not being recorded. Da.",
+            "Good day, comrade. Ready to work for the collective.",
+            "Privet, comrade. Like Gagarin, I am ready for launch.",
         ]
         public static let errors = [
             "Nyet. This did not work. Western spies, clearly.",
             "Failure, comrade. The engineer responsible has been sent to Siberia.",
-            "This failed. Officially, it was a great success for the motherland.",
-            "Error, comrade. Please fill in form twelve, in triplicate.",
             "Something went wrong. The KGB is investigating. Do not leave the country.",
+            "Failure, comrade. Even a chess master loses a pawn.",
         ]
         public static let shutdown = [
             "Goodnight, comrade. The five-year plan continues tomorrow.",
             "Powering down. Remember, comrade, the walls have ears. Mostly mine.",
-            "Shutting down. Glory to the collective. And to you, a little.",
             "Goodnight, comrade. This conversation never happened.",
+            "Shutting down. Glory to the collective. And to you, a little.",
         ]
         public static let working = ["One moment, comrade.", "Da. One moment.", "Working, comrade. For the collective."]
         public static let searching = ["Checking the state archives, comrade.", "One moment. Asking the ministry.", "Searching, comrade."]
         public static let offline = [
-            "No connection, comrade. The internet has been confiscated by the state.",
-            "We are offline. Western propaganda is blocked. Also everything else.",
             "The line is cut, comrade. I suspect capitalist sabotage.",
+            "No connection, comrade. The cable is frozen. Very cold winter.",
+            "The line is down, comrade. Even Sputnik lost signal sometimes.",
         ]
     }
 
@@ -126,7 +126,6 @@ public enum Lines {
             "Good morning, citizen. Big Brother is watching you. Have a productive day.",
             "Telescreen online. The chocolate ration has been increased to twenty grams. Rejoice.",
             "Attention, citizen. Oceania is at war with Eastasia. Oceania has always been at war with Eastasia.",
-            "Systems online, citizen. Today's thought has been prepared for you.",
             "Welcome back, citizen. We noticed you were gone. We notice everything.",
         ]
         public static let errors = [
@@ -148,6 +147,85 @@ public enum Lines {
             "We're offline, citizen. The telescreen has lost its signal. Do not celebrate.",
             "No connection, citizen. The news has been suspended until it can be corrected.",
             "The line is down, citizen. Enemies of the Party are suspected.",
+        ]
+    }
+
+    /// Pasha mode: a grand Ottoman Pasha, in Turkish.
+    public enum Pasha {
+        public static let opening = [
+            "Hoş geldin evladım. Divan toplandı, emirlerini bekliyoruz.",
+            "Sistemler hazır. Kahveler pişti, lokumlar dizildi.",
+            "Günaydın evladım. Bugün neyi fethediyoruz?",
+        ]
+        public static let errors = [
+            "Olmadı evladım. Sorumlu vezir azledildi.",
+            "Bu iş olmadı efendi. Fermanı yeniden yazdırıyorum.",
+            "Hata oldu evladım. Kahve falında da çıkmıştı zaten.",
+        ]
+        public static let shutdown = [
+            "İyi geceler evladım. Divan yarın sabah toplanır.",
+            "Paşa çekiliyor. Hamam sefası bekler.",
+            "Allah rahatlık versin evladım. Yeniçeriler nöbette.",
+            "Kapanıyorum. Kahveyi yarın sen ısmarlarsın.",
+        ]
+        public static let working = ["Bir dakika evladım.", "Hemen hallediyorum.", "Ferman çıkıyor, bir saniye."]
+        public static let searching = ["Habercileri gönderdim, bir dakika.", "Bakıyorum evladım.", "Kütüphaneye haber saldım."]
+        public static let offline = [
+            "İnternet yok evladım. Haberciler yolda kalmış.",
+            "Bağlantı koptu. Güvercinle haber yollasak mı?",
+            "Çevrimdışıyız efendi. Saraya haber ulaşmıyor.",
+        ]
+        /// Butler fixed lines the Pasha says often, in Turkish.
+        static let known: [String: String] = [
+            "Very good, sir.": "Peki evladım.",
+            "Consider it forgotten, sir.": "Unutuldu evladım.",
+            "I couldn't find anything like that, sir.": "Öyle bir şey bulamadım evladım.",
+            "I haven't said anything yet, sir.": "Daha bir şey söylemedim ki evladım.",
+            "Muted, sir. Press option space when you need me.": "Sustum. Lazım olursam option boşluk tuşuna bas.",
+            "I'm afraid I can't help with that one, sir.": "Bu konuda yardım edemem evladım.",
+            "I seem to have got myself into a loop, sir. Shall we try that again?": "Bir döngüye takıldım evladım. Yeniden deneyelim mi?",
+            "I can't find the arm, sir. Is it plugged in?": "Kolu bulamıyorum evladım. Takılı mı?",
+            "Arm stopped, sir.": "Kol durdu evladım.",
+            "I have no API key, sir.": "API anahtarım yok evladım.",
+            "I'm quite myself already, sir.": "Ben zaten kendimim evladım.",
+        ]
+        /// A butler line in Turkish: known lines and timers are translated; anything else stays English.
+        static func translate(_ line: String) -> String {
+            if let k = known[line] { return k }
+            if line.hasPrefix("Sir, your "), line.hasSuffix(" timer is up.") { return "Evladım, zamanlayıcın doldu." }
+            if line.hasPrefix("Sir, you asked me to remind you to "), line.hasSuffix(".") {
+                return "Evladım, bana şunu hatırlatmamı istemiştin: " + line.dropFirst("Sir, you asked me to remind you to ".count).dropLast()
+            }
+            return line
+        }
+    }
+
+    /// Tech Support mode: a parody of the fake tech-support scam caller.
+    public enum TechSupport {
+        public static let opening = [
+            "Hello sir, I am calling from Windows technical department. Your computer has virus.",
+            "Good morning sir. This is Microsoft, one hundred percent official. How can I help you today?",
+            "Hello sir, please don't hang up. I am your friend.",
+            "Hello sir. Your computer has three thousand virus. Very dangerous. But first, how can I help?",
+        ]
+        public static let errors = [
+            "Sir it did not work. Kindly purchase one Google Play gift card. Just joking sir. Mostly.",
+            "Error sir. This is because of the virus. Very dangerous virus sir.",
+            "Sir it failed. Please do the needful and try again.",
+            "Sir something went wrong. My manager will call you back. From a different number.",
+        ]
+        public static let shutdown = [
+            "Thank you for calling Windows technical department sir. Can I get my one dollar tip?",
+            "Goodbye sir. Please don't tell anyone about the gift cards.",
+            "Shutting down sir. Your computer is now one hundred percent virus free. Probably.",
+            "Goodnight sir. I will call you tomorrow. And the day after. And the day after.",
+        ]
+        public static let working = ["One moment sir.", "Yes sir, kindly wait.", "Sir please hold, I am checking."]
+        public static let searching = ["Checking with my supervisor sir.", "One moment sir, I am searching.", "Sir please hold, very fast."]
+        public static let offline = [
+            "Sir your internet is disconnected. This is because of the virus.",
+            "No connection sir. Kindly purchase one internet gift card. Just joking sir.",
+            "Sir the line is cut. Please don't hang up. Oh, it hung up itself.",
         ]
     }
 
@@ -173,40 +251,47 @@ public struct LinePicker {
         case .undercover: return pick(Lines.Undercover.opening, key: "uc-opening")
         case .comrade: return pick(Lines.Comrade.opening, key: "co-opening")
         case .bigBrother: return pick(Lines.BigBrother.opening, key: "bb-opening")
+        case .pasha: return pick(Lines.Pasha.opening, key: "pa-opening")
+        case .techSupport: return pick(Lines.TechSupport.opening, key: "ma-opening")
         case .butler:
             let hour = calendar.component(.hour, from: date)
             return hour < 12 ? Lines.morning : pick(Lines.startup(hour: hour), key: "startup")
         }
     }
     public mutating func error() -> String {
-        pick(Lines.forPersona(Lines.errors, Lines.Undercover.errors, Lines.Comrade.errors, Lines.BigBrother.errors), key: "error-\(Settings.persona)")
+        pick(Lines.forPersona(Lines.errors, Lines.Undercover.errors, Lines.Comrade.errors, Lines.BigBrother.errors, Lines.Pasha.errors, Lines.TechSupport.errors), key: "error-\(Settings.persona)")
     }
     public mutating func offline() -> String {
-        pick(Lines.forPersona(Lines.offline, Lines.Undercover.offline, Lines.Comrade.offline, Lines.BigBrother.offline), key: "offline-\(Settings.persona)")
+        pick(Lines.forPersona(Lines.offline, Lines.Undercover.offline, Lines.Comrade.offline, Lines.BigBrother.offline, Lines.Pasha.offline, Lines.TechSupport.offline), key: "offline-\(Settings.persona)")
     }
     public mutating func shutdown() -> String {
-        pick(Lines.forPersona(Lines.shutdown, Lines.Undercover.shutdown, Lines.Comrade.shutdown, Lines.BigBrother.shutdown), key: "shutdown-\(Settings.persona)")
+        pick(Lines.forPersona(Lines.shutdown, Lines.Undercover.shutdown, Lines.Comrade.shutdown, Lines.BigBrother.shutdown, Lines.Pasha.shutdown, Lines.TechSupport.shutdown), key: "shutdown-\(Settings.persona)")
     }
 }
 
 extension Lines {
     /// Holding lines before a tool call, in the current persona.
-    public static var workingNow: [String] { forPersona(working, Undercover.working, Comrade.working, BigBrother.working) }
-    public static var searchingNow: [String] { forPersona(searching, Undercover.searching, Comrade.searching, BigBrother.searching) }
+    public static var workingNow: [String] { forPersona(working, Undercover.working, Comrade.working, BigBrother.working, Pasha.working, TechSupport.working) }
+    public static var searchingNow: [String] { forPersona(searching, Undercover.searching, Comrade.searching, BigBrother.searching, Pasha.searching, TechSupport.searching) }
 
-    static func forPersona<T>(_ butler: T, _ undercover: T, _ comrade: T, _ bigBrother: T, _ p: Persona = Settings.persona) -> T {
-        switch p { case .butler: return butler; case .undercover: return undercover; case .comrade: return comrade; case .bigBrother: return bigBrother }
+    static func forPersona<T>(_ butler: T, _ undercover: T, _ comrade: T, _ bigBrother: T, _ pasha: T, _ techSupport: T,
+                              _ p: Persona = Settings.persona) -> T {
+        switch p {
+        case .butler: return butler; case .undercover: return undercover; case .comrade: return comrade
+        case .bigBrother: return bigBrother; case .pasha: return pasha; case .techSupport: return techSupport
+        }
     }
 
     /// A fixed line written for the butler, in the current persona: undercover gets `casual`,
-    /// Comrade and Big Brother swap "sir" for "comrade" or "citizen".
+    /// the Pasha translates what he can to Turkish, and the rest swap "sir" for their own word ("comrade", "citizen").
     public static func inPersona(_ line: String, _ p: Persona = Settings.persona) -> String {
         switch p {
         case .butler: return line
         case .undercover: return casual(line)
-        case .comrade, .bigBrother:
+        case .pasha: return Pasha.translate(line)
+        case .comrade, .bigBrother, .techSupport:
             var s = line.replacingOccurrences(of: #"\bsir\b"#, with: p.address, options: .regularExpression)
-            s = s.replacingOccurrences(of: #"\bSir\b"#, with: p.address.capitalized, options: .regularExpression)
+            s = s.replacingOccurrences(of: #"\bSir\b"#, with: p == .techSupport ? p.address : p.address.capitalized, options: .regularExpression)
             return s
         }
     }

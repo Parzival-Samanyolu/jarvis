@@ -53,13 +53,19 @@ public final class Speaker {
     }
 
     /// The voice for the current persona. Comrade reads English with Milena, a Russian voice, for the accent;
-    /// Big Brother is Rocko. Either falls back to the butler's voice if missing.
+    /// Big Brother is Rocko, the Pasha a male Turkish voice (Cem) or Yelda, Tech Support Aman. Each falls back to the butler's voice.
     public static func voiceForMode(installed: [(name: String, locale: String)] = installed()) -> String {
         func named(_ prefix: String) -> String? { installed.first { $0.name.hasPrefix(prefix) }?.name }
         switch Settings.persona {
         case .undercover: return pickAmerican(installed: installed)
         case .comrade: if let v = named("Milena") { return v }
         case .bigBrother: if let v = named("Rocko") { return v }
+        case .pasha:
+            // A male Turkish voice if one has been downloaded, otherwise Yelda.
+            let turkish = installed.filter { $0.locale == "tr_TR" }.map(\.name)
+            if let v = turkish.first(where: { !$0.hasPrefix("Yelda") }) ?? turkish.first { return v }
+        case .techSupport:
+            if let v = named("Aman") ?? named("Rishi") ?? installed.first(where: { $0.locale == "en_IN" })?.name { return v }
         case .butler: break
         }
         return pickVoice(installed: installed, chosen: Settings.voice)
@@ -68,9 +74,9 @@ public final class Speaker {
     /// Words a minute for the current persona: Milena is slowed so her English stays understandable.
     public static func rateForMode() -> Int? {
         switch Settings.persona {
-        case .comrade: return 130
+        case .comrade: return 115
         case .bigBrother: return 160
-        case .butler, .undercover: return Settings.rate
+        case .butler, .undercover, .pasha, .techSupport: return Settings.rate
         }
     }
 
