@@ -76,7 +76,8 @@ public final class Speaker {
         switch Settings.persona {
         case .comrade: return 115
         case .bigBrother: return 160
-        case .butler, .undercover, .pasha, .techSupport: return Settings.rate
+        case .techSupport: return 190   // reading fast from the script
+        case .butler, .undercover, .pasha: return Settings.rate
         }
     }
 

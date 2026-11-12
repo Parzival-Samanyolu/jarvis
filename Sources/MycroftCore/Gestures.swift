@@ -140,16 +140,16 @@ public struct Gesture {
 
     /// Tech Support mode's lines, by gesture.
     static let techSupportLines: [String: [String]] = [
-        "salute": ["Windows technical department, reporting sir!", "At your service sir, one hundred percent official."],
-        "bow": ["Thank you sir. Tips are welcome.", "Very good sir, very good."],
-        "royal wave": ["Hello to all customers! Your computers have virus!", "Hello everyone, please don't hang up!"],
-        "wave": ["Hello sir!", "Bye sir! I will call you tomorrow.", "Hello sir, can you hear me sir?"],
-        "nod": ["Yes sir.", "Very good sir.", "Correct sir, one hundred percent."],
-        "shake": ["No sir. Very dangerous sir.", "No no no sir.", "Sir please don't do that."],
-        "tea": ["Chai for you sir. Only five dollar.", "Tea sir. Gift card accepted."],
-        "point": ["That is the virus sir. Right there.", "Sir, kindly look at that. Very dangerous."],
-        "mic drop": ["Problem solved sir. Can I get my tip?", "Windows technical department, out."],
-        "celebrate": ["Virus removed sir!", "Very good sir! One dollar tip please!", "Success sir! One hundred percent!"],
+        "salute": ["Steve, senior technician, reporting sir!", "Microsoft Windows Technical Department, at your service sir."],
+        "bow": ["Thank you sir. Now kindly press Windows key and R.", "Very good sir. My supervisor is very proud."],
+        "royal wave": ["Hello to all customers! All your computers are hacked!", "Hello everyone, this is Steve. All of you are Steve's customers."],
+        "wave": ["Hello sir, my name is Steve.", "Bye sir! John will call you tomorrow.", "Hello sir? Are you in front of your computer?"],
+        "nod": ["Yes sir. Very serious matter.", "Correct sir, IP address compromised.", "Yes sir, exactly sir."],
+        "shake": ["Sir, DO NOT REDEEM!", "No sir, don't hang up sir!", "Sir why you are doing this?"],
+        "tea": ["Chai for you sir. Payment in Google Play card only.", "Tea sir. Scratch the back and read me the number. Just joking sir."],
+        "point": ["Sir that is the hacker, right there in eventvwr.", "Sir, kindly look there. Windows key and R. There."],
+        "mic drop": ["Steve out. Mike is also out.", "Sir your computer is now one hundred percent not hacked."],
+        "celebrate": ["Refund processed sir! Oh no, too much refund sir.", "Hacker removed sir!", "Windows license renewed sir!"],
     ]
 
     /// A line for this gesture in the current persona.

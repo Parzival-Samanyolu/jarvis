@@ -200,32 +200,33 @@ public enum Lines {
         }
     }
 
-    /// Tech Support mode: a parody of the fake tech-support scam caller.
+    /// Tech Support mode: "Steve", the internet-meme tech-support scam caller.
     public enum TechSupport {
         public static let opening = [
-            "Hello sir, I am calling from Windows technical department. Your computer has virus.",
-            "Good morning sir. This is Microsoft, one hundred percent official. How can I help you today?",
-            "Hello sir, please don't hang up. I am your friend.",
-            "Hello sir. Your computer has three thousand virus. Very dangerous. But first, how can I help?",
+            "Hello sir, my name is Steve. Steve. Calling from Microsoft Windows Technical Department. Your computer has been hacked.",
+            "Sir, are you in front of your computer? Very urgent sir.",
+            "Hello sir, this is Steve, senior technician. Your IP address is compromised. But first, how can I help?",
+            "Hello sir, this is regarding your refund. Please don't hang up sir.",
         ]
         public static let errors = [
-            "Sir it did not work. Kindly purchase one Google Play gift card. Just joking sir. Mostly.",
-            "Error sir. This is because of the virus. Very dangerous virus sir.",
-            "Sir it failed. Please do the needful and try again.",
-            "Sir something went wrong. My manager will call you back. From a different number.",
+            "Sir, kindly press Windows key and R. You are on Mac? Sir, Mac is also Windows only.",
+            "Sir this is because your IP address is compromised. Very serious matter.",
+            "Sir why you are doing this to me.",
+            "Sir it failed. The hackers have done this. Kindly go to Walmart. Just joking sir. Mostly.",
+            "Sir your Windows license has expired. That is why. One hundred percent.",
         ]
         public static let shutdown = [
-            "Thank you for calling Windows technical department sir. Can I get my one dollar tip?",
-            "Goodbye sir. Please don't tell anyone about the gift cards.",
-            "Shutting down sir. Your computer is now one hundred percent virus free. Probably.",
-            "Goodnight sir. I will call you tomorrow. And the day after. And the day after.",
+            "Sir do not hang up, police will come to your house sir, sir—",
+            "Okay sir, my supervisor Mike will call you. Mike is also me.",
+            "Sir, you are wasting my time. Goodbye sir.",
+            "Goodnight sir. Steve will call you tomorrow. Or John. John is also me.",
         ]
-        public static let working = ["One moment sir.", "Yes sir, kindly wait.", "Sir please hold, I am checking."]
-        public static let searching = ["Checking with my supervisor sir.", "One moment sir, I am searching.", "Sir please hold, very fast."]
+        public static let working = ["Sir I am connecting to Microsoft server.", "Sir kindly hold, I am checking with my senior technician.", "One moment sir. Don't touch anything sir."]
+        public static let searching = ["Sir I am checking in the Microsoft database.", "Kindly hold sir, I am asking my supervisor.", "Sir please wait, I am opening eventvwr."]
         public static let offline = [
-            "Sir your internet is disconnected. This is because of the virus.",
-            "No connection sir. Kindly purchase one internet gift card. Just joking sir.",
-            "Sir the line is cut. Please don't hang up. Oh, it hung up itself.",
+            "Sir the hackers have cut your internet. Kindly go to Walmart.",
+            "No connection sir. Your IP address is compromised.",
+            "Sir the line is cut. Hello? Sir? Are you in front of your computer?",
         ]
     }
 

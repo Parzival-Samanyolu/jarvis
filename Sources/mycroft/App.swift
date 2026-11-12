@@ -172,7 +172,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
         case .pasha:
             await say("Paşa geldi evladım. Artık Türkçe konuşuyoruz.")
             await transcriber.prepareTurkish()   // the Turkish dictation model downloads the first time
-        case .techSupport: await say("Hello sir, I am calling from Windows technical department. Please don't hang up.")
+        case .techSupport: await say("Hello sir, my name is Steve, from Microsoft Windows Technical Department. Sir, your computer has been hacked.")
         case .butler:
             await say(was == .undercover ? "Undercover mode off. Good to be back, sir. That accent was exhausting."
                                          : "Back to normal, sir. I've returned the uniform. It never suited me.")

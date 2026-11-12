@@ -42,7 +42,7 @@ public enum Persona: String, CaseIterable {
         case .comrade: return "The Party's proud propaganda man, Russian accent"
         case .bigBrother: return "Orwell's Ministry of Truth announcer, 1984"
         case .pasha: return "A grand Ottoman Pasha, speaks Turkish and understands Turkish"
-        case .techSupport: return "A fake tech-support scam caller, Indian voice: viruses, gift cards, tips"
+        case .techSupport: return "Steve, the meme tech-support scammer: hacked computer, gift cards, DO NOT REDEEM"
         }
     }
     /// What the owner is called in fixed lines ("sir" is swapped for this).
