@@ -132,7 +132,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
     func render() {
         guard statusItem != nil else { return }
         // Undercover, the butler hides behind sunglasses; the other personas have their own badge.
-        let costume: String? = [.undercover: "sunglasses", .comrade: "star.fill", .bigBrother: "eye", .pasha: "moon.stars.fill", .techSupport: "headphones"][Settings.persona]
+        let costume: String? = [.undercover: "sunglasses", .comrade: "star.fill", .bigBrother: "eye", .pasha: "moon.stars.fill", .techSupport: "headphones", .trump: "megaphone.fill"][Settings.persona]
         let idle = costume.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: "Mycroft Idle (\(Settings.persona.label))") } ?? ButlerGlyph.image
         let img = state == .idle ? idle : NSImage(systemSymbolName: state.symbol, accessibilityDescription: "Mycroft \(state.label)")
         statusItem.button?.image = img
@@ -173,6 +173,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             await say("Paşa geldi evladım. Artık Türkçe konuşuyoruz.")
             await transcriber.prepareTurkish()   // the Turkish dictation model downloads the first time
         case .techSupport: await say("Hello sir, my name is Steve, from Microsoft Windows Technical Department. Sir, your computer has been hacked.")
+        case .trump: await say("maga")
         case .butler:
             await say(was == .undercover ? "Undercover mode off. Good to be back, sir. That accent was exhausting."
                                          : "Back to normal, sir. I've returned the uniform. It never suited me.")
@@ -417,7 +418,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate, Conf
             Task { @MainActor in
                 self.confirmCont = cont
                 self.state = .confirming
-                await self.speaker.speak(Settings.undercover ? "\(description). Want me to go ahead?" : Settings.persona == .pasha ? "\(description). Devam edeyim mi evladım?" : Lines.inPersona("\(description). Shall I proceed, sir?"))
+                await self.speaker.speak(Settings.undercover ? "\(description). Want me to go ahead?" : Settings.persona == .pasha ? "\(description). Devam edeyim mi evladım?"
+                    : Settings.persona == .trump ? "\(description). Shall I go ahead?" : Lines.inPersona("\(description). Shall I proceed, sir?"),
+                    plain: true)   // in Trump mode too, the safety question is spoken plainly
                 guard self.confirmCont != nil else { return }
                 let heard = await self.hear(startTimeout: 6)
                 guard self.confirmCont != nil else { return }

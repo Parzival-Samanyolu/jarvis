@@ -55,7 +55,7 @@ func runUndercoverTests() {
     }
     expectEqual(Set(Gesture.comradeLines.keys), Set(Gesture.all.map(\.name)), "every gesture has comrade lines")
     expectEqual(Set(Gesture.bigBrotherLines.keys), Set(Gesture.all.map(\.name)), "every gesture has Big Brother lines")
-    expectEqual(Lines.forPersona("b", "u", "c", "x", "p", "m", .comrade), "c")
+    expectEqual(Lines.forPersona("b", "u", "c", "x", "p", "m", "t", .comrade), "c")
     expectEqual(Lines.inPersona("Very good, sir.", .pasha), "Peki evladım.")
     expectEqual(Lines.inPersona("Sir, your 25 minute timer is up.", .pasha), "Evladım, zamanlayıcın doldu.")
     expectEqual(Lines.inPersona("Sir, you asked me to remind you to drink water.", .pasha), "Evladım, bana şunu hatırlatmamı istemiştin: drink water")
@@ -67,6 +67,22 @@ func runUndercoverTests() {
     }
     expectEqual(Set(Gesture.pashaLines.keys), Set(Gesture.all.map(\.name)), "every gesture has Pasha lines")
     expectEqual(Set(Gesture.techSupportLines.keys), Set(Gesture.all.map(\.name)), "every gesture has Tech Support lines")
+    // Trump: only clips, "Quiet, piggy" when nothing fits.
+    let clips = ["quiet-piggy", "wrong", "tremendous", "you-are-fired"]
+    expectEqual(TrumpClips.name(for: "Tremendous.", available: clips), "tremendous")
+    expectEqual(TrumpClips.name(for: "you are fired!", available: clips), "you-are-fired")
+    expectEqual(TrumpClips.name(for: "Timer set for 25 minutes, sir.", available: clips), "quiet-piggy")
+    expectEqual(TrumpClips.name(for: "anything", available: ["wrong"]), "wrong", "no piggy clip: first clip")
+    expectEqual(TrumpClips.name(for: "anything", available: []), nil)
+    expectEqual(Lines.inPersona("Timer set, sir.", .trump), "Timer set, sir.")
+    expectEqual(Lines.forPersona("b", "u", "c", "x", "p", "m", "t", .trump), "t")
+    let prompt = Prompts.trump(clips: clips)
+    expect(prompt.contains("- quiet-piggy:") && prompt.contains("- you-are-fired:") && prompt.contains("Quiet, quiet, piggy"))
+    let known = Set(TrumpClips.meanings.keys)
+    for list in [Lines.Trump.opening, Lines.Trump.errors, Lines.Trump.shutdown, Lines.Trump.offline, Lines.Trump.working, Lines.Trump.searching] + Array(Gesture.trumpLines.values) {
+        expect(!list.isEmpty && list.allSatisfy(known.contains), "Trump lines are clip names: \(list)")
+    }
+    expectEqual(Set(Gesture.trumpLines.keys), Set(Gesture.all.map(\.name)), "every gesture has Trump clips")
     expectEqual(Speech.yesNo("Evet, devam et"), .yes)
     expectEqual(Speech.yesNo("Hayır"), .no)
 }

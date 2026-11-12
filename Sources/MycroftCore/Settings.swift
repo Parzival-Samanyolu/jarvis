@@ -28,11 +28,11 @@ public enum Humour: String, CaseIterable {
 
 /// Who Mycroft is being. The butler is the default; the others are menu-bar costumes.
 public enum Persona: String, CaseIterable {
-    case butler, undercover, comrade, bigBrother, pasha, techSupport
+    case butler, undercover, comrade, bigBrother, pasha, techSupport, trump
     public var label: String {
         switch self {
         case .butler: return "Butler"; case .undercover: return "Undercover"; case .comrade: return "Comrade"
-        case .bigBrother: return "Big Brother"; case .pasha: return "Pasha"; case .techSupport: return "Tech Support"
+        case .bigBrother: return "Big Brother"; case .pasha: return "Pasha"; case .techSupport: return "Tech Support"; case .trump: return "Trump"
         }
     }
     public var blurb: String {
@@ -43,13 +43,14 @@ public enum Persona: String, CaseIterable {
         case .bigBrother: return "Orwell's Ministry of Truth announcer, 1984"
         case .pasha: return "A grand Ottoman Pasha, speaks Turkish and understands Turkish"
         case .techSupport: return "Steve, the meme tech-support scammer: hacked computer, gift cards, DO NOT REDEEM"
+        case .trump: return "Only real Donald J. Trump clips from ~/Mycroft/trump. Nothing fits? Quiet, piggy"
         }
     }
     /// What the owner is called in fixed lines ("sir" is swapped for this).
     public var address: String {
         switch self {
         case .butler: return "sir"; case .undercover: return ""; case .comrade: return "comrade"; case .bigBrother: return "citizen"
-        case .pasha: return "evladım"; case .techSupport: return "sir"
+        case .pasha: return "evladım"; case .techSupport: return "sir"; case .trump: return ""
         }
     }
 }

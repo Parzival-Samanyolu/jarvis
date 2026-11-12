@@ -66,6 +66,7 @@ public final class Speaker {
             if let v = turkish.first(where: { !$0.hasPrefix("Yelda") }) ?? turkish.first { return v }
         case .techSupport:
             if let v = named("Aman") ?? named("Rishi") ?? installed.first(where: { $0.locale == "en_IN" })?.name { return v }
+        case .trump: return pickAmerican(installed: installed)   // only for the safety question; the rest are his clips
         case .butler: break
         }
         return pickVoice(installed: installed, chosen: Settings.voice)
@@ -77,7 +78,7 @@ public final class Speaker {
         case .comrade: return 115
         case .bigBrother: return 160
         case .techSupport: return 190   // reading fast from the script
-        case .butler, .undercover, .pasha: return Settings.rate
+        case .butler, .undercover, .pasha, .trump: return Settings.rate
         }
     }
 
@@ -119,9 +120,17 @@ public final class Speaker {
     public var isSpeaking: Bool { lock.lock(); defer { lock.unlock() }; return !pending.isEmpty }
 
     /// Queues a line and returns at once. Safe from any thread. Lines play in the order queued.
-    public func enqueue(_ text: String) {
+    /// In Trump mode the line becomes one of his real clips, unless `plain` (the safety question must be understood).
+    public func enqueue(_ text: String, plain: Bool = false) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
+        if Settings.persona == .trump, !plain {
+            guard let name = TrumpClips.name(for: t, available: TrumpClips.available()), let url = TrumpClips.file(named: name) else { return }
+            let clip = Clip(url)
+            lock.lock(); pending.insert(ObjectIdentifier(clip)); lock.unlock()
+            queue.async { [self] in clips.append(clip); playNextClip() }
+            return
+        }
         let u = AVSpeechUtterance(string: t)
         u.voice = resolvedVoice()
         u.rate = rate.map(Self.avRate) ?? AVSpeechUtteranceDefaultSpeechRate
@@ -149,12 +158,42 @@ public final class Speaker {
     }
 
     /// Speaks after anything already queued and returns when finished or stopped.
-    public func speak(_ text: String) async { enqueue(text); await drain() }
+    public func speak(_ text: String, plain: Bool = false) async { enqueue(text, plain: plain); await drain() }
 
-    /// Called when an utterance ends; untracked ones (dropped by `stop()`) are ignored.
-    func ended(_ u: AVSpeechUtterance) {
+    // MARK: Trump mode's clips
+
+    final class Clip { let url: URL; init(_ url: URL) { self.url = url } }
+    /// Touched only on `queue`.
+    var clips: [Clip] = []
+    var player: AVAudioPlayer?
+    var playing: Clip?
+    lazy var clipDelegate = ClipDelegate(owner: self)
+
+    /// On `queue`: starts the next clip if none is playing. A clip that won't load counts as finished.
+    func playNextClip() {
+        guard playing == nil, !clips.isEmpty else { return }
+        let clip = clips.removeFirst()
+        guard let p = try? AVAudioPlayer(contentsOf: clip.url) else { ended(clip); playNextClip(); return }
+        p.delegate = clipDelegate
+        if muted { p.volume = 0 }
+        playing = clip; player = p
+        onSpeakingChanged?(true)
+        if !p.play() { playing = nil; player = nil; ended(clip); playNextClip() }
+    }
+
+    final class ClipDelegate: NSObject, AVAudioPlayerDelegate {
+        weak var owner: Speaker?
+        init(owner: Speaker) { self.owner = owner }
+        func audioPlayerDidFinishPlaying(_ p: AVAudioPlayer, successfully: Bool) {
+            guard let o = owner else { return }
+            o.queue.async { guard o.player === p, let c = o.playing else { return }; o.playing = nil; o.player = nil; o.ended(c); o.playNextClip() }
+        }
+    }
+
+    /// Called when an utterance or clip ends; untracked ones (dropped by `stop()`) are ignored.
+    func ended(_ item: AnyObject) {
         lock.lock()
-        guard pending.remove(ObjectIdentifier(u)) != nil, pending.isEmpty else { lock.unlock(); return }
+        guard pending.remove(ObjectIdentifier(item)) != nil, pending.isEmpty else { lock.unlock(); return }
         let w = waiters; waiters = []; lock.unlock()
         onSpeakingChanged?(false)
         w.forEach { $0.resume() }
@@ -162,7 +201,7 @@ public final class Speaker {
 
     public func stop() {
         lock.lock(); let was = !pending.isEmpty; pending = []; let w = waiters; waiters = []; lock.unlock()
-        queue.async { [self] in synth.stopSpeaking(at: .immediate) }
+        queue.async { [self] in synth.stopSpeaking(at: .immediate); clips = []; player?.stop(); player = nil; playing = nil }
         if was { onSpeakingChanged?(false) }
         w.forEach { $0.resume() }
     }

@@ -180,4 +180,23 @@ func runSpeakerTests() async {
     let t1 = Date(); s.stop(); await s.drain()
     expect(Date().timeIntervalSince(t1) < 0.2, "stop() drains at once")
     expect(!s.isSpeaking)
+
+    // Trump mode plays his clips (muted) in order; only runs where the clips are downloaded.
+    let clips = TrumpClips.available()
+    if clips.contains("quiet-piggy"), clips.contains("tremendous") {
+        let before = Settings.personaOverride; Settings.personaOverride = .trump
+        defer { Settings.personaOverride = before }
+        let t2 = Date()
+        s.enqueue("Tremendous."); s.enqueue("Timer set, sir.")   // the second has no clip: "Quiet, piggy"
+        expect(s.isSpeaking)
+        await s.drain()
+        let took = Date().timeIntervalSince(t2)
+        print(String(format: "speaker: 2 Trump clips in %.2fs", took))
+        expect(took > 3.5 && took < 6, "tremendous + quiet-piggy play in turn: \(took)")
+        s.enqueue("Quiet piggy.")
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        let t3 = Date(); s.stop(); await s.drain()
+        expect(Date().timeIntervalSince(t3) < 0.2, "stop() cuts a clip at once")
+        expect(!s.isSpeaking)
+    }
 }

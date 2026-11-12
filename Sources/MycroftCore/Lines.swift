@@ -230,6 +230,16 @@ public enum Lines {
         ]
     }
 
+    /// Trump mode: names of his real clips (see `TrumpClips`); the speaker plays them, or "Quiet, piggy" if one is missing.
+    public enum Trump {
+        public static let opening = ["maga", "tremendous", "believe-me"]
+        public static let errors = ["wrong", "so-complicated", "fake-news", "quiet-piggy"]
+        public static let shutdown = ["thank-you", "you-are-fired", "maga"]
+        public static let working = ["believe-me", "tremendous"]
+        public static let searching = ["believe-me", "person-woman-man"]
+        public static let offline = ["fake-news", "wrong", "so-complicated"]
+    }
+
     public static func startup(hour: Int) -> [String] {
         hour >= 12 && hour < 18 ? startupAnyTime + [afternoonOnly] : startupAnyTime
     }
@@ -254,32 +264,33 @@ public struct LinePicker {
         case .bigBrother: return pick(Lines.BigBrother.opening, key: "bb-opening")
         case .pasha: return pick(Lines.Pasha.opening, key: "pa-opening")
         case .techSupport: return pick(Lines.TechSupport.opening, key: "ma-opening")
+        case .trump: return pick(Lines.Trump.opening, key: "dt-opening")
         case .butler:
             let hour = calendar.component(.hour, from: date)
             return hour < 12 ? Lines.morning : pick(Lines.startup(hour: hour), key: "startup")
         }
     }
     public mutating func error() -> String {
-        pick(Lines.forPersona(Lines.errors, Lines.Undercover.errors, Lines.Comrade.errors, Lines.BigBrother.errors, Lines.Pasha.errors, Lines.TechSupport.errors), key: "error-\(Settings.persona)")
+        pick(Lines.forPersona(Lines.errors, Lines.Undercover.errors, Lines.Comrade.errors, Lines.BigBrother.errors, Lines.Pasha.errors, Lines.TechSupport.errors, Lines.Trump.errors), key: "error-\(Settings.persona)")
     }
     public mutating func offline() -> String {
-        pick(Lines.forPersona(Lines.offline, Lines.Undercover.offline, Lines.Comrade.offline, Lines.BigBrother.offline, Lines.Pasha.offline, Lines.TechSupport.offline), key: "offline-\(Settings.persona)")
+        pick(Lines.forPersona(Lines.offline, Lines.Undercover.offline, Lines.Comrade.offline, Lines.BigBrother.offline, Lines.Pasha.offline, Lines.TechSupport.offline, Lines.Trump.offline), key: "offline-\(Settings.persona)")
     }
     public mutating func shutdown() -> String {
-        pick(Lines.forPersona(Lines.shutdown, Lines.Undercover.shutdown, Lines.Comrade.shutdown, Lines.BigBrother.shutdown, Lines.Pasha.shutdown, Lines.TechSupport.shutdown), key: "shutdown-\(Settings.persona)")
+        pick(Lines.forPersona(Lines.shutdown, Lines.Undercover.shutdown, Lines.Comrade.shutdown, Lines.BigBrother.shutdown, Lines.Pasha.shutdown, Lines.TechSupport.shutdown, Lines.Trump.shutdown), key: "shutdown-\(Settings.persona)")
     }
 }
 
 extension Lines {
     /// Holding lines before a tool call, in the current persona.
-    public static var workingNow: [String] { forPersona(working, Undercover.working, Comrade.working, BigBrother.working, Pasha.working, TechSupport.working) }
-    public static var searchingNow: [String] { forPersona(searching, Undercover.searching, Comrade.searching, BigBrother.searching, Pasha.searching, TechSupport.searching) }
+    public static var workingNow: [String] { forPersona(working, Undercover.working, Comrade.working, BigBrother.working, Pasha.working, TechSupport.working, Trump.working) }
+    public static var searchingNow: [String] { forPersona(searching, Undercover.searching, Comrade.searching, BigBrother.searching, Pasha.searching, TechSupport.searching, Trump.searching) }
 
-    static func forPersona<T>(_ butler: T, _ undercover: T, _ comrade: T, _ bigBrother: T, _ pasha: T, _ techSupport: T,
+    static func forPersona<T>(_ butler: T, _ undercover: T, _ comrade: T, _ bigBrother: T, _ pasha: T, _ techSupport: T, _ trump: T,
                               _ p: Persona = Settings.persona) -> T {
         switch p {
         case .butler: return butler; case .undercover: return undercover; case .comrade: return comrade
-        case .bigBrother: return bigBrother; case .pasha: return pasha; case .techSupport: return techSupport
+        case .bigBrother: return bigBrother; case .pasha: return pasha; case .techSupport: return techSupport; case .trump: return trump
         }
     }
 
@@ -289,6 +300,7 @@ extension Lines {
         switch p {
         case .butler: return line
         case .undercover: return casual(line)
+        case .trump: return line   // the speaker plays a clip; butler lines become "Quiet, piggy"
         case .pasha: return Pasha.translate(line)
         case .comrade, .bigBrother, .techSupport:
             var s = line.replacingOccurrences(of: #"\bsir\b"#, with: p.address, options: .regularExpression)

@@ -152,6 +152,13 @@ public struct Gesture {
         "celebrate": ["Refund processed sir! Oh no, too much refund sir.", "Hacker removed sir!", "Windows license renewed sir!"],
     ]
 
+    /// Trump mode's clips, by gesture.
+    static let trumpLines: [String: [String]] = [
+        "salute": ["maga"], "bow": ["thank-you"], "royal wave": ["maga", "tremendous"], "wave": ["thank-you", "maga"],
+        "nod": ["believe-me", "tremendous"], "shake": ["wrong", "fake-news", "quiet-piggy"], "tea": ["quiet-piggy"],
+        "point": ["you-are-fired", "fake-news"], "mic drop": ["you-are-fired", "swear"], "celebrate": ["tremendous", "maga", "stable-genius"],
+    ]
+
     /// A line for this gesture in the current persona.
     public var line: String {
         let list: [String]
@@ -162,6 +169,7 @@ public struct Gesture {
         case .bigBrother: list = Gesture.bigBrotherLines[name] ?? ["Very good, citizen."]
         case .pasha: list = Gesture.pashaLines[name] ?? ["Peki evladım."]
         case .techSupport: list = Gesture.techSupportLines[name] ?? ["Yes sir, very good sir."]
+        case .trump: list = Gesture.trumpLines[name] ?? ["quiet-piggy"]
         }
         return list.randomElement() ?? ""
     }
