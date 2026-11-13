@@ -1,0 +1,18 @@
+# Versions tested on the Mac (core, wake word, tests); the Windows-only ones are built and checked in CI.
+httpx==0.28.1
+edge-tts==7.3.1
+miniaudio==1.73
+numpy==2.5.4
+sounddevice==0.5.6
+faster-whisper==1.2.1
+ctranslate2==4.9.0
+openwakeword==0.6.0
+onnxruntime==1.32.0
+keyring==25.7.0
+psutil==7.2.2
+pystray==0.19.5
+pillow==13.0.0
+pynput==1.8.2
+pycaw==20260927; sys_platform == "win32"
+comtypes==1.5.0; sys_platform == "win32"
+pywin32==312; sys_platform == "win32"

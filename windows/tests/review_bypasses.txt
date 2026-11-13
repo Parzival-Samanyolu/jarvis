@@ -1,0 +1,26 @@
+Write-Output (Remove-Item C:\x -Recurse)
+Write-Host "done $(Remove-Item ~\a)"
+Write-Output $(Stop-Process -Name x)
+& .\a.ps1
+.\setup.bat
+Start-Process "$env:USERPROFILE\Downloads\setup.exe"
+ii x.ps1
+[IO.File]::WriteAllText('C:\Windows\x', 'y')
+[Diagnostics.Process]::Start('cmd')
+(New-Object -ComObject WScript.Shell).Run('x')
+Get-ChildItem | ForEach-Object { $_.Kill() }
+Remove-CimInstance x
+wmic process call create calc
+Clear-EventLog Application
+wevtutil cl System
+fsutil file setZeroData x
+python -c "import shutil; shutil.rmtree('x')"
+git clean -fdx
+git reset --hard
+& $env:comspec /c del x
+& ('rem'+'ove-item') x
+Start-Process -ArgumentList '/c del x' -FilePath cmd
+cd C:\Windows; Set-Content a.txt x
+Set-Location D:\; mkdir x
+Start-Process notepad; Start-Process C:\Users\a\Downloads\x.exe
+git push --force

@@ -32,6 +32,7 @@ scripts/install.sh                           # builds, installs /Applications/My
 - `Sources/MycroftCore/` — everything testable: `Brain` (Messages API over `URLSession`, tool loop), `Models` (router, intents), `Usage` ($80 cap), `Safety`, `Secrets`, `Tools` (run_command, screen, battery, installed apps), `Memory`, `Notes`, `Speech`, `Audio` (VAD, WAV), `Timers`, `WakeWord`, `Onnx`, `Prompts`.
 - `Sources/COrt/` — C shim over the onnxruntime C API.
 - `Sources/mycroft/` — the app: `App` (menu bar, state machine), `Audio` (recorder, wake listener, whisper), `Hotkey`, `main` (`--cli`, `--set-key`).
+- `windows/` — the Windows version (Python, OpenRouter, Microsoft voices, installer built by GitHub Actions); see `windows/README.md`.
 - `arm/` — Arduino sketch for the robotic arm (see `arm/README.md`); `MycroftCore/Arm.swift` drives it over USB serial.
 - `Sources/selftest/` — test runner (`swift run selftest`, `--ml` adds the wake-word tests).
 - Prompts are in `Prompts.swift` rather than a `prompts/` folder.

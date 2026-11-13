@@ -11,3 +11,9 @@ models/
 .env
 *.key
 mycroft.log
+# Windows port
+windows/.venv/
+windows/build/
+windows/dist/
+__pycache__/
+.pytest_cache/
